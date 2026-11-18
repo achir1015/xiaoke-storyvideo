@@ -2,6 +2,9 @@
 
 <img src="public/icon-192.png" width="96" align="right" alt="圖示" />
 <img width="1910" height="1031" alt="image" src="https://github.com/user-attachments/assets/021c39ab-8d0a-47e4-a60e-9ca36400d95c" />
+線上版
+
+<img width="1917" height="1079" alt="image" src="https://github.com/user-attachments/assets/da311b5c-912f-4b9b-8f82-401108a89212" />
 
 
 https://github.com/user-attachments/assets/f7d23d3f-21fb-4209-a80b-2aa75f40ce67

@@ -1,5 +1,5 @@
 name: 部署線上版（GitHub Pages）
-# 第一次要到 Settings → Pages 把 Source 設成 GitHub Actions
+# 第一次要到 Settings → Pages 把 Source 設成「GitHub Actions」（不是 Deploy from a branch）
 
 on:
   push:

@@ -1,4 +1,4 @@
-# 小柯機器人文字與圖像轉影音工具
+# 小柯機器人文字與圖像轉影音工具 https://achir1015.github.io/xiaoke-storyvideo/
 
 <img src="public/icon-192.png" width="96" align="right" alt="圖示" />
 <img width="1910" height="1031" alt="image" src="https://github.com/user-attachments/assets/021c39ab-8d0a-47e4-a60e-9ca36400d95c" />

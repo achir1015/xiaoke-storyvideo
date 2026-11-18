@@ -96,6 +96,44 @@ function pick(accept: string, multi: boolean): Promise<File[]> {
   });
 }
 
+// --- iPhone／iPad App（WKWebView）：App 注入 window.XiaokeIOS 與 xkq 訊息通道 ----------------
+
+interface IOSBridge {
+  postMessage(msg: { cmd: string; args?: unknown[] }): Promise<{ status?: string; token?: string; message?: string } | boolean | null>;
+}
+export const iosApp = (): IOSBridge | undefined => {
+  const w = window as unknown as { XiaokeIOS?: boolean; webkit?: { messageHandlers?: { xkq?: IOSBridge } } };
+  return w.XiaokeIOS ? w.webkit?.messageHandlers?.xkq : undefined;
+};
+
+/** iOS App：分段傳給 App，存好後打開分享選單（存到照片、檔案、AirDrop…） */
+async function shareIOS(ios: IOSBridge, blob: Blob, name: string) {
+  const begin = (await ios.postMessage({ cmd: 'begin_save', args: [name] })) as { status?: string; token?: string };
+  if (begin?.status !== 'ok' || !begin.token) throw new Error('無法建立檔案');
+  const CHUNK = 1024 * 1024;
+  for (let i = 0; i < blob.size; i += CHUNK) await ios.postMessage({ cmd: 'write_chunk', args: [begin.token, await blobToB64(blob.slice(i, i + CHUNK))] });
+  await ios.postMessage({ cmd: 'end_save', args: [begin.token] });
+}
+
+/** 長時間工作時不要讓螢幕自動鎖定（鎖定後網頁會暫停） */
+let wakeLock: { release(): Promise<void> } | null = null;
+export async function keepAwake(on: boolean) {
+  const ios = iosApp();
+  if (ios) {
+    await ios.postMessage({ cmd: 'keep_awake', args: [on] }).catch(() => null);
+    return;
+  }
+  try {
+    if (on && !wakeLock) wakeLock = await (navigator as unknown as { wakeLock?: { request(t: string): Promise<{ release(): Promise<void> }> } }).wakeLock?.request('screen') ?? null;
+    if (!on && wakeLock) {
+      await wakeLock.release();
+      wakeLock = null;
+    }
+  } catch {
+    // 不支援就算了
+  }
+}
+
 function saveAs(blob: Blob, name: string) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -431,7 +469,12 @@ export function createWebBridge(): DesktopBridge {
     ff: {
       probe: probeBlob,
       async render(dir, plan, outRel) {
-        return render(dir, plan, outRel, (p, label) => progressFns.forEach((fn) => fn({ p, label })));
+        await keepAwake(true);
+        try {
+          return await render(dir, plan, outRel, (p, label) => progressFns.forEach((fn) => fn({ p, label })));
+        } finally {
+          await keepAwake(false);
+        }
       },
       async cancel() {
         canceled = true;
@@ -452,7 +495,10 @@ export function createWebBridge(): DesktopBridge {
       async open(p) {
         const b = await getFile(p);
         if (!b) return '找不到檔案';
-        saveAs(b, p.split('/').pop() || 'download');
+        const name = p.split('/').pop() || 'download';
+        const ios = iosApp();
+        if (ios) await shareIOS(ios, b.type ? b : new Blob([b], { type: mimeOf(p) }), name);
+        else saveAs(b, name);
         return '';
       },
       async external(url) {
@@ -475,6 +521,7 @@ export function createWebBridge(): DesktopBridge {
       },
     },
     media: mediaUrl,
+    keepAwake,
     platform: 'web',
   };
   return bridge;

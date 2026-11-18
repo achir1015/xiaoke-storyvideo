@@ -844,6 +844,7 @@ async function makeAll(kind: 'all' | 'stills' | 'voices') {
   }
   making = true;
   stopMaking = false;
+  void xk.keepAwake?.(true);
   makeStat();
   const prog = $('#make-progress');
   prog.hidden = false;
@@ -871,6 +872,7 @@ async function makeAll(kind: 'all' | 'stills' | 'voices') {
   };
   await Promise.all(Array.from({ length: Math.max(1, settings.parallel) }, worker));
   making = false;
+  void xk.keepAwake?.(false);
   prog.hidden = true;
   await studio.saveNow();
   renderMake();
@@ -948,7 +950,7 @@ function openSettings() {
   $<HTMLInputElement>('#m-image').value = settings.imageModel;
   $<HTMLInputElement>('#m-video').value = settings.videoModel;
   $<HTMLInputElement>('#m-tts').value = settings.ttsModel;
-  $<HTMLSelectElement>('#voice-engine').value = settings.voiceEngine;
+  $<HTMLSelectElement>('#voice-engine').value = xk.web && settings.voiceEngine === 'edge' ? 'taiwan' : settings.voiceEngine;
   $<HTMLSelectElement>('#parallel').value = String(settings.parallel);
   $<HTMLSelectElement>('#local-model').innerHTML = LOCAL_MODELS.map((m) => `<option value="${m.key}">${esc(m.name)}・${m.size} GB・${esc(m.note)}</option>`).join('');
   $<HTMLSelectElement>('#local-model').value = localModelOf(settings.localModel).key;
@@ -1177,8 +1179,14 @@ async function boot() {
   if (!bridge) {
     // 線上版：專案存在瀏覽器裡、用 ffmpeg.wasm 合成
     document.body.classList.add('web');
-    bridge = (await import('./web-bridge')).createWebBridge();
+    const wb = await import('./web-bridge');
+    bridge = wb.createWebBridge();
     window.xk = bridge;
+    // iPhone／iPad App：存檔走分享選單
+    if (wb.iosApp()) {
+      document.body.classList.add('ios-app');
+      $$('#open-video .web-only, #open-srt .web-only').forEach((e) => (e.textContent = e.textContent!.replace('下載', '存')));
+    }
   }
   xk = bridge;
   const saved = (await xk.settings.get()) as Partial<Settings> & { lastProject?: string };

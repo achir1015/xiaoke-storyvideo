@@ -330,6 +330,8 @@ function dialog(html: string): HTMLDialogElement {
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
+const IOS_PAGES = 'https://achir1015.github.io/xiaoke-storyvideo/';
+
 export function initUpdateButton(current: string) {
   for (const b of document.querySelectorAll<HTMLButtonElement>('.xk-update')) b.addEventListener('click', () => void checkUpdate(current));
 }
@@ -337,10 +339,17 @@ export function initUpdateButton(current: string) {
 export async function checkUpdate(current: string, quiet = false) {
   const d = desktop();
   const xk = d?.web ? undefined : d;
+  const w = window as unknown as { XiaokeIOS?: boolean; webkit?: { messageHandlers?: { xkq?: { postMessage(m: unknown): Promise<unknown> } } } };
+  const iosBridge = w.XiaokeIOS ? w.webkit?.messageHandlers?.xkq : undefined;
   try {
     let info: UpdateInfo;
     if (xk) info = await xk.update.check();
-    else {
+    else if (iosBridge) {
+      // iPhone／iPad App：和線上版的版本比較，有新版就到安裝頁更新
+      const res = await fetch(`${IOS_PAGES}version.json?t=${Date.now()}`, { cache: 'no-store' });
+      const j = (await res.json()) as { version: string; notes?: string };
+      info = { current, latest: j.version, newer: cmpVer(j.version, current) > 0, notes: j.notes ?? '', page: `${IOS_PAGES}ios/`, canInstall: true, flavor: 'ios' };
+    } else {
       const res = await fetch(`version.json?t=${Date.now()}`, { cache: 'no-store' });
       const j = (await res.json()) as { version: string; notes?: string };
       info = { current, latest: j.version, newer: cmpVer(j.version, current) > 0, notes: j.notes ?? '', page: `https://github.com/${UPDATE_REPO}/releases/latest`, canInstall: true, flavor: 'web' };
@@ -352,11 +361,15 @@ export async function checkUpdate(current: string, quiet = false) {
     const d = dialog(`<h2>有新版本 v${esc(info.latest)}</h2><p>目前版本 v${esc(info.current)}</p>
       ${info.notes ? `<pre class="xk-notes">${esc(info.notes)}</pre>` : ''}
       <progress hidden max="1" value="0"></progress><p class="xk-msg"></p>
-      <div class="xk-row"><button type="button" class="xk-go primary">${info.canInstall ? (xk ? '下載並安裝' : '立即更新') : '開啟下載頁'}</button><button class="ghost">稍後</button></div>`);
+      <div class="xk-row"><button type="button" class="xk-go primary">${info.canInstall ? (xk ? '下載並安裝' : iosBridge ? '前往安裝頁更新' : '立即更新') : '開啟下載頁'}</button><button class="ghost">稍後</button></div>`);
     const go = d.querySelector<HTMLButtonElement>('.xk-go')!;
     const bar = d.querySelector<HTMLProgressElement>('progress')!;
     const msg = d.querySelector<HTMLElement>('.xk-msg')!;
     go.addEventListener('click', async () => {
+      if (iosBridge) {
+        await iosBridge.postMessage({ cmd: 'open_url', args: [info.page] });
+        return;
+      }
       if (!xk) {
         location.reload();
         return;

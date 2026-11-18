@@ -71,6 +71,8 @@ export interface DesktopBridge {
   web?: boolean;
   /** 線上版：專案檔案的 Blob 網址 */
   media?(abs: string, bust: string): Promise<string>;
+  /** 線上版／手機：長時間工作時不讓螢幕鎖定 */
+  keepAwake?(on: boolean): Promise<void>;
 }
 
 declare global {

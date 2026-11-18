@@ -18,10 +18,10 @@ https://github.com/user-attachments/assets/f7d23d3f-21fb-4209-a80b-2aa75f40ce67
 
 | 平台 | 狀態 |
 |---|---|
-| Windows 11 | ✅ v1.3.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)） |
-| MacBook Pro（Apple 晶片／Intel） | ✅ v1.3.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)；第一次開啟若被擋：按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」） |
+| Windows 11 | ✅ v1.4.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)） |
+| MacBook Pro（Apple 晶片／Intel） | ✅ v1.4.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)；第一次開啟若被擋：按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」） |
 | 線上版（HTML） | ✅ <https://achir1015.github.io/xiaoke-storyvideo/>（免安裝；專案存在瀏覽器裡，影片在瀏覽器合成，較慢） |
-| iPhone／iPad（線上安裝） | 規劃中 |
+| iPhone／iPad（線上安裝） | ✅ v1.4.0：用 Safari 開 <https://achir1015.github.io/xiaoke-storyvideo/ios/> 按「安裝」（限開發者登記過的裝置） |
 | Android | 規劃中 |
 
 ## 五個步驟

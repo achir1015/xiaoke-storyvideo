@@ -69,7 +69,7 @@ body.web .desktop-only, body:not(.web) .web-only { display: none !important; }
 #top .logo { width: 44px; height: 44px; border-radius: 10px; }
 #top h1 { margin: 0; font-size: 18px; letter-spacing: .5px; white-space: nowrap; }
 #top p { margin: 0; color: #c9d8e2; font-size: 12px; white-space: nowrap; }
-#top button { color: #fff; border-color: rgba(255,255,255,.25); }
+#top button { color: #fff; border-color: rgba(255,255,255,.25); white-space: nowrap; flex: none; }
 #top button:hover:not(:disabled) { background: rgba(255,255,255,.12); border-color: rgba(255,255,255,.5); }
 .ver { color: #c9d8e2; font-size: 12px; }
 .proj-chip { display: flex; align-items: center; gap: 6px; margin-left: 14px; background: rgba(255,255,255,.1); border-radius: 999px; padding: 3px 12px 3px 10px; }
@@ -272,3 +272,31 @@ body:not(.local-exp) #board-engine .local-only { display: none; }
 .shot-wait { font-size: 12px; color: var(--muted); }
 
 .xk-dialog h3.sub { margin: 16px 0 4px; font-size: 15px; }
+
+/* 平板與手機（iPhone／iPad App、手機瀏覽器）：標題列換行、不超出螢幕 */
+body { grid-template-columns: minmax(0, 1fr); }
+#top { padding-top: max(8px, env(safe-area-inset-top)); padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
+@media (max-width: 1000px) {
+  #top { flex-wrap: wrap; row-gap: 6px; }
+  #top .title { flex: 1 1 200px; min-width: 0; }
+  #top h1 { white-space: normal; font-size: 16px; }
+  #top .spacer { display: none; }
+  .proj-chip { margin-left: 0; order: 9; flex: 1 1 260px; min-width: 0; }
+  .proj-chip input { flex: 1; width: auto; min-width: 0; }
+  #proj-btn { order: 10; }
+}
+@media (max-width: 600px) {
+  #top { gap: 6px; padding-left: max(10px, env(safe-area-inset-left)); padding-right: max(10px, env(safe-area-inset-right)); }
+  #top .logo { width: 34px; height: 34px; }
+  #top h1 { font-size: 14px; }
+  #top button { padding: 4px 9px; font-size: 13px; }
+  #guide-btn .mini-robot + * , .ver { display: none; }
+  #stage { padding: 12px 10px calc(24px + env(safe-area-inset-bottom)); }
+  .xk-dialog { padding: 16px 14px; width: 96vw; max-height: 90vh; overflow: auto; }
+  .xk-dialog .two { grid-template-columns: 1fr; }
+  #toast { max-width: 92vw; }
+  .cast-grid { grid-template-columns: minmax(0, 1fr); }
+  .char { grid-template-columns: 110px minmax(0, 1fr); gap: 10px; padding-right: 26px; }
+  .char .sheet { width: 110px; height: 110px; }
+  .char .fields .row { flex-wrap: wrap; }
+}

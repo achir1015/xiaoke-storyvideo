@@ -170,7 +170,8 @@
             <div class="eng-row">
               <span class="eng-label">配音</span>
               <div class="seg" id="voice-seg" title="配音方式">
-                <button type="button" data-v="edge" title="微軟神經語音：免費，依性別年齡選聲音">🔊 微軟語音（免費）</button>
+                <button type="button" data-v="edge" class="desktop-only" title="微軟神經語音：免費，依性別年齡選聲音，速度快">🔊 微軟語音（免費）</button>
+                <button type="button" data-v="taiwan" title="台灣口音雲端語音（IndexTTS）：免費，依性別年齡用台灣人聲音樣本，會表現語氣；每句約 10～30 秒，建議到設定貼 Hugging Face 權杖">🇹🇼 台灣口音（免費）</button>
                 <button type="button" data-v="gemini-design" title="Gemini 聲音設計：每個角色專屬聲音，需要金鑰">☁️ Gemini 語音</button>
               </div>
             </div>
@@ -210,9 +211,9 @@
               <button type="button" id="render-stop" class="ghost danger" hidden>■ 停止合成</button>
               <div id="render-progress" class="progress-line" hidden><div></div><span></span></div>
               <div class="row out-acts">
-                <button type="button" id="open-video" class="ghost" disabled>▶ 開啟影片</button>
-                <button type="button" id="open-srt" class="ghost" disabled>📝 開啟 SRT</button>
-                <button type="button" id="open-folder" class="ghost">📁 輸出資料夾</button>
+                <button type="button" id="open-video" class="ghost" disabled><span class="desktop-only">▶ 開啟影片</span><span class="web-only">⬇ 下載影片</span></button>
+                <button type="button" id="open-srt" class="ghost" disabled><span class="desktop-only">📝 開啟 SRT</span><span class="web-only">⬇ 下載 SRT</span></button>
+                <button type="button" id="open-folder" class="ghost desktop-only">📁 輸出資料夾</button>
               </div>
             </div>
             <div class="card player-card">
@@ -229,7 +230,7 @@
     <dialog id="settings-dlg" class="xk-dialog wide">
       <form method="dialog">
         <h2>⚙ AI 設定</h2>
-        <p class="muted">AI 分鏡使用 Google Gemini：到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 用 Google 帳號建立<b>免費金鑰</b>（不用綁信用卡），貼在下面即可（金鑰只存在這台電腦，並以系統加密保存）。Gemini 的寫實畫面、AI 影片要付費帳號才能用；不想花錢就用免費選項：免費雲端畫面、立體動態照片、微軟語音。</p>
+        <p class="muted">AI 分鏡使用 Google Gemini：到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 用 Google 帳號建立<b>免費金鑰</b>（不用綁信用卡），貼在下面即可（金鑰只存在<span class="desktop-only">這台電腦，並以系統加密保存</span><span class="web-only">這個瀏覽器</span>）。Gemini 的寫實畫面、AI 影片要付費帳號才能用；不想花錢就用免費選項：免費雲端畫面、立體動態照片、免費配音（微軟語音或台灣口音）。</p>
         <div class="field">
           <label for="key">Gemini API 金鑰</label>
           <div class="row">
@@ -251,7 +252,8 @@
             <select id="voice-engine">
               <option value="gemini-design">Gemini 聲音設計（每個角色專屬聲音，最自然）</option>
               <option value="gemini">Gemini 內建聲音（依性別年齡挑選）</option>
-              <option value="edge">微軟免費神經語音（不需金鑰）</option>
+              <option value="edge" class="desktop-only">微軟免費神經語音（不需金鑰，最快）</option>
+              <option value="taiwan">台灣口音雲端語音（免費，較慢）</option>
             </select>
           </div>
           <div class="field">
@@ -270,6 +272,12 @@
             <label for="horde-key">AI Horde 金鑰（可留空＝匿名）</label>
             <input id="horde-key" type="password" autocomplete="off" spellcheck="false" placeholder="留空即可免費使用" />
           </div>
+        </div>
+        <h3 class="sub">🇹🇼 台灣口音雲端語音（IndexTTS）</h3>
+        <p class="muted">用 Hugging Face 上 IndexTeam 官方的免費雲端 GPU，依角色性別年齡套用台灣人聲音樣本。沒有權杖只能唸幾句；到 <a href="https://huggingface.co/settings/tokens" target="_blank" rel="noopener">huggingface.co</a> 免費註冊並建立「Read」權杖貼在這裡，每天有更多免費額度。權杖只存在這台裝置。</p>
+        <div class="field">
+          <label for="hf-token">Hugging Face 權杖（hf_ 開頭，可留空）</label>
+          <input id="hf-token" type="password" autocomplete="off" spellcheck="false" placeholder="hf_…" />
         </div>
         <label class="check"><input type="checkbox" id="local-exp" /> 啟用「本機小模型分鏡」（實驗功能：在這台電腦用顯示晶片跑 AI，長時間滿載，<b>部分筆電會過熱或當機重開</b>，建議有獨立顯示卡的電腦再開）</label>
         <div class="two local-only">
@@ -303,8 +311,8 @@
         <h3>最近的專案</h3>
         <ul id="proj-list" class="proj-list"></ul>
         <div class="xk-row">
-          <button type="button" id="proj-open-other" class="ghost">開啟其他位置的專案…</button>
-          <button type="button" id="proj-root" class="ghost">📁 專案資料夾</button>
+          <button type="button" id="proj-open-other" class="ghost desktop-only">開啟其他位置的專案…</button>
+          <button type="button" id="proj-root" class="ghost desktop-only">📁 專案資料夾</button>
           <div class="spacer"></div>
           <button value="cancel" class="ghost" id="proj-close">關閉</button>
         </div>

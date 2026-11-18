@@ -67,6 +67,10 @@ export interface DesktopBridge {
     onProgress(fn: (d: { got: number; total: number }) => void): () => void;
   };
   platform: string;
+  /** 線上版（瀏覽器）才有 */
+  web?: boolean;
+  /** 線上版：專案檔案的 Blob 網址 */
+  media?(abs: string, bust: string): Promise<string>;
 }
 
 declare global {

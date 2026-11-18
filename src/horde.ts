@@ -71,6 +71,8 @@ export class Horde {
     private net: Net,
     private apiKey = '',
     private version = '1.0.0',
+    /** 圖放 Cloudflare R2 給網址（桌面版）；線上版要 false＝直接回傳 base64，避開跨網域限制 */
+    private r2 = true,
   ) {}
 
   private headers() {
@@ -125,7 +127,7 @@ export class Horde {
       models: [m.key],
       nsfw: false,
       censor_nsfw: true,
-      r2: true,
+      r2: this.r2,
       shared: false,
       replacement_filter: true,
     };

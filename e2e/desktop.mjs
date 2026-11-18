@@ -107,7 +107,7 @@ try {
   const info = await evaluate(`return await window.xk.info()`);
   check('內建 FFmpeg', !!info.ffmpeg, info.ffmpeg);
   check('自動建立第一個專案', (await evaluate(`return xkApp.project().title`)) === '我的第一個故事');
-  check('免費模式提示', /尚未設定/.test(await evaluate(`return document.querySelector('#ai-state').textContent`)));
+  check('免費模式提示', /全部免費模式/.test(await evaluate(`return document.querySelector('#ai-state').textContent`)));
   await autoConfirm();
 
   // 1 故事
@@ -142,7 +142,7 @@ try {
   await evaluate(`const p = xkApp.project(); p.shots = p.shots.slice(0, 4); xkApp.studio().touch(); return true`);
 
   // 4 畫面與配音：動態照片＋微軟語音
-  await evaluate(`xkApp.setStep('make'); xkApp.setVideoEngine('photo')`);
+  await evaluate(`xkApp.setStep('make'); xkApp.setVideoEngine('photo'); xkApp.setStillEngine('sheet')`); // 免費雲端畫面另由 e2e/horde-still.mjs 測試
   const t0 = Date.now();
   await evaluate(`await xkApp.makeAll('all')`);
   const st = await evaluate(`const s = xkApp.studio(); return s.p.shots.map(x => s.shotState(x))`);

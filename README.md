@@ -15,9 +15,9 @@ https://github.com/user-attachments/assets/f7d23d3f-21fb-4209-a80b-2aa75f40ce67
 
 | 平台 | 狀態 |
 |---|---|
-| Windows 11 | ✅ v1.2.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)） |
-| MacBook Pro（Apple 晶片／Intel） | ✅ v1.2.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)；第一次開啟若被擋：按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」） |
-| 線上版（HTML） | 規劃中 |
+| Windows 11 | ✅ v1.3.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)） |
+| MacBook Pro（Apple 晶片／Intel） | ✅ v1.3.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)；第一次開啟若被擋：按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」） |
+| 線上版（HTML） | ✅ <https://achir1015.github.io/xiaoke-storyvideo/>（免安裝；專案存在瀏覽器裡，影片在瀏覽器合成，較慢） |
 | iPhone／iPad（線上安裝） | 規劃中 |
 | Android | 規劃中 |
 
@@ -37,9 +37,9 @@ https://github.com/user-attachments/assets/f7d23d3f-21fb-4209-a80b-2aa75f40ce67
 | 分鏡 | Gemini 文字模型（[Google AI Studio](https://aistudio.google.com/apikey) 的**免費金鑰**即可）；沒有金鑰就依段落與對白快速切段 | — |
 | 鏡頭畫面 | **免費雲端 AI**（[AI Horde](https://aihorde.net)，全球志工電腦產生寫實照片，免帳號、要排隊，每張約 1–8 分鐘）；或直接用九宮格照片 | Gemini 圖片模型（Nano Banana） |
 | 動態 | **2.5D 立體動態照片**：AI 判斷畫面遠近（Depth Anything，CPU 計算），做出立體視差的推、拉、搖運鏡 | Gemini Omni AI 影片（3–15 秒/鏡，含環境音，依秒數計費） |
-| 配音 | **微軟神經語音**（台灣腔，分男女老少） | Gemini 聲音設計（每角色專屬） |
+| 配音 | **微軟神經語音**（台灣腔，分男女老少；只有桌面版）；**台灣口音雲端語音**（[IndexTTS](https://huggingface.co/spaces/IndexTeam/IndexTTS-2.5-Demo) 免費雲端 GPU，用台灣人聲音樣本、會表現語氣；線上版預設，建議貼免費的 Hugging Face 權杖） | Gemini 聲音設計（每角色專屬） |
 
-金鑰貼在程式右上角「⚙ 設定」，只存在你的電腦（系統加密）。付費的 AI 影片產生前會先顯示總秒數讓你確認。
+金鑰貼在程式右上角「⚙ 設定」，只存在你的電腦（桌面版用系統加密；線上版存在這個瀏覽器）。付費的 AI 影片產生前會先顯示總秒數讓你確認。
 
 免費雲端畫面與立體動態照片都不會讓電腦的顯示晶片長時間滿載。設定裡另有「本機小模型分鏡」實驗功能（在自己電腦用顯示晶片跑 AI），預設關閉：部分筆電長時間滿載會過熱或當機重開。
 
@@ -48,3 +48,9 @@ https://github.com/user-attachments/assets/f7d23d3f-21fb-4209-a80b-2aa75f40ce67
 ---
 
 開發：吳玉柱 先生 與 Claude AI Opus 5.5　・　授權：MIT（內附 FFmpeg 為 GPL，見 THIRD_PARTY_NOTICES.md）
+
+## 線上版說明
+
+- 打開網址就能用，不用安裝；專案、圖片、配音、影片都存在**這個瀏覽器**裡（換瀏覽器或清除網站資料就看不到）。做好的影片按「⬇ 下載影片」存到電腦。
+- 合成用 ffmpeg.wasm 在瀏覽器裡跑，比桌面版慢（約 5～10 倍）；第一次會下載約 30 MB 的 FFmpeg 和 6 MB 的中文字幕字型。
+- 微軟語音不允許網頁直接連線，線上版配音改用台灣口音雲端語音或 Gemini 語音。

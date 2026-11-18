@@ -5,6 +5,11 @@
 **下載：**
 - Windows 11：`XiaokeStoryVideo-版本-win-x64.exe`（安裝版，會建立桌面與開始選單捷徑）／`…-portable.exe`（免安裝）
 - Mac（Apple 晶片）：`…-mac-arm64.dmg`；Mac（Intel）：`…-mac-x64.dmg`
+- 線上版（免安裝）：https://achir1015.github.io/xiaoke-storyvideo/
+
+**v1.3.0：線上版**
+- 新增線上版：打開網址就能用，專案存在瀏覽器裡，影片在瀏覽器合成（較慢），做好按「⬇ 下載影片」。
+- 新增配音「🇹🇼 台灣口音」：免費雲端語音（IndexTTS），用台灣人的聲音樣本，依角色性別年齡挑選並表現語氣；建議在「⚙ 設定」貼上免費的 Hugging Face 權杖。桌面版也可以選。
 
 **v1.2.0：全部可以免費做**
 - 畫面：☁️ 免費雲端 AI（AI Horde 志工電腦產生寫實照片，免帳號、免費，要排隊，每張約 1–5 分鐘）。

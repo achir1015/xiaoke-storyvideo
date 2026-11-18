@@ -119,7 +119,7 @@ function renderSteps() {
     ai.textContent = '✅ 已設定 Gemini 金鑰：可用 AI 分鏡；付費的寫實畫面、AI 影片在第 4 步選';
   } else {
     ai.className = 'ai-state no';
-    ai.textContent = '🆓 全部免費模式：免費雲端畫面、立體動態照片、微軟語音。貼上 Google AI Studio 的免費金鑰，分鏡會更好（按這裡設定）。';
+    ai.textContent = `🆓 全部免費模式：免費雲端畫面、立體動態照片、${xk.web ? '台灣口音雲端語音' : '微軟語音'}。貼上 Google AI Studio 的免費金鑰，分鏡會更好（按這裡設定）。`;
   }
 }
 
@@ -347,17 +347,19 @@ async function aiSheet(c: Character) {
   }
 }
 
+const VOICE_NAME: Record<string, string> = { edge: '微軟語音', taiwan: '台灣口音雲端語音', gemini: 'Gemini 語音', 'gemini-design': 'Gemini 語音' };
+
 /** 試聽：用目前的配音方式唸一句 */
 let player: HTMLAudioElement | null = null;
 async function listen(speaker: string, text: string) {
   const fake: Shot = { ...newShot(), id: `試聽-${speaker}`, lines: [{ speaker, text, emotion: '' }] };
-  toast('正在產生試聽聲音…', 8000);
+  toast(xk.web ? '正在產生試聽聲音（台灣口音雲端語音約 10～30 秒）…' : '正在產生試聽聲音…', 30000);
   try {
     await studio.genVoice(fake, 0);
     player?.pause();
     player = new Audio(await studio.url(fake.lines[0].audio));
     await player.play();
-    toast(`試聽：${speakerLabel(studio.speakerOf(speaker))}・${studio.engineFor(studio.speakerOf(speaker)) === 'edge' ? '微軟語音' : 'Gemini 語音'}`);
+    toast(`試聽：${speakerLabel(studio.speakerOf(speaker))}・${VOICE_NAME[studio.engineFor(studio.speakerOf(speaker))]}`);
   } catch (e) {
     alertBox('試聽失敗', `<p>${esc(friendly(e))}</p>`);
   }
@@ -636,7 +638,8 @@ function renderMake() {
 function renderEngines() {
   $$('#still-engine button').forEach((b) => b.classList.toggle('on', b.dataset.v === settings.stillEngine));
   $$('#video-engine button').forEach((b) => b.classList.toggle('on', b.dataset.v === settings.videoEngine));
-  const voice = settings.voiceEngine === 'edge' ? 'edge' : 'gemini-design';
+  const ve = settings.voiceEngine;
+  const voice = ve === 'gemini' ? 'gemini-design' : ve === 'edge' && xk.web ? 'taiwan' : ve;
   $$('#voice-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === voice));
 }
 
@@ -644,7 +647,7 @@ function renderEngines() {
 function setEngine(kind: 'still' | 'video' | 'voice', v: string) {
   if (v === 'gemini' || v === 'ai' || v === 'gemini-design') {
     if (!settings.geminiKey) {
-      alertBox('需要 Gemini 金鑰', `<p>這個選項要用 Google Gemini${v === 'gemini-design' ? '（免費金鑰可試用，額度很少）' : '（需要已綁定付款的金鑰，會產生費用）'}。請先到「⚙ 設定」貼上金鑰。</p><p class="muted">不想花錢就用免費選項：☁️ 免費雲端 AI、🎞️ 立體動態照片、🔊 微軟語音。</p>`);
+      alertBox('需要 Gemini 金鑰', `<p>這個選項要用 Google Gemini${v === 'gemini-design' ? '（免費金鑰可試用，額度很少）' : '（需要已綁定付款的金鑰，會產生費用）'}。請先到「⚙ 設定」貼上金鑰。</p><p class="muted">不想花錢就用免費選項：☁️ 免費雲端 AI、🎞️ 立體動態照片、${xk.web ? '🇹🇼 台灣口音' : '🔊 微軟語音'}。</p>`);
       return;
     }
   }
@@ -802,7 +805,7 @@ async function runShot(s: Shot, o: RunOpts) {
         if (stopMaking) break;
         if (!o.force && studio.shotState(s).voices[li]) continue;
         if (!s.lines[li].text.trim()) continue;
-        await step('voice', () => studio.genVoice(s, li));
+        await step('voice', () => studio.genVoice(s, li).finally(() => hordeWait.delete(s.id)));
       }
     }
   } catch (e) {
@@ -953,6 +956,7 @@ function openSettings() {
   $<HTMLSelectElement>('#horde-model').innerHTML = HORDE_MODELS.map((m) => `<option value="${esc(m.key)}">${esc(m.name)}・${esc(m.note)}</option>`).join('');
   $<HTMLSelectElement>('#horde-model').value = hordeModelOf(settings.hordeModel).key;
   $<HTMLInputElement>('#horde-key').value = settings.hordeKey;
+  $<HTMLInputElement>('#hf-token').value = settings.hfToken;
   d.classList.toggle('show-local', settings.localExperimental);
   void localStatus();
   $('#key-msg').textContent = '';
@@ -973,6 +977,7 @@ function readSettingsForm(): Settings {
     localExperimental: $<HTMLInputElement>('#local-exp').checked,
     hordeModel: $<HTMLSelectElement>('#horde-model').value || settings.hordeModel,
     hordeKey: $<HTMLInputElement>('#horde-key').value.trim(),
+    hfToken: $<HTMLInputElement>('#hf-token').value.trim(),
   };
 }
 
@@ -1060,6 +1065,12 @@ function afterProjectChange() {
     renderSteps();
   };
   studio.onSaved = () => ($('#save-state').textContent = '已儲存');
+  studio.onVoiceWait = (id, rank) => {
+    const s = P().shots.find((x) => x.id === id);
+    if (!s) return;
+    hordeWait.set(id, rank ? `配音排隊中：前面還有 ${rank} 位` : '雲端正在配音…');
+    refreshShot(s);
+  };
   renderSteps();
   setStep(P().story.trim() ? (P().shots.length ? 'make' : P().characters.length ? 'cast' : 'story') : 'story');
 }
@@ -1162,11 +1173,12 @@ async function boot() {
   document.querySelector('#guide-btn .mini-robot')!.innerHTML = ROBOT_SVG;
   $$('.empty-robot').forEach((e) => (e.innerHTML = ROBOT_SVG));
   initUpdateButton(__APP_VERSION__);
-  const bridge = desktop();
+  let bridge = desktop();
   if (!bridge) {
+    // 線上版：專案存在瀏覽器裡、用 ffmpeg.wasm 合成
     document.body.classList.add('web');
-    $('#stage').innerHTML = `<div class="empty"><div class="empty-robot">${ROBOT_SVG}</div><h2>線上版製作中</h2><p>目前請下載 Windows 桌面版使用：<a href="https://github.com/achir1015/xiaoke-storyvideo/releases/latest" target="_blank" rel="noopener">GitHub Releases</a></p></div>`;
-    return;
+    bridge = (await import('./web-bridge')).createWebBridge();
+    window.xk = bridge;
   }
   xk = bridge;
   const saved = (await xk.settings.get()) as Partial<Settings> & { lastProject?: string };

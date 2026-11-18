@@ -210,7 +210,7 @@ export function buildPlan(p: Project, inp: RenderInputs, outName: string): Plan 
   else finalArgs.push('-c:v', 'copy');
   finalArgs.push(
     '-af',
-    'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000',
+    'loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo',
     '-c:a',
     'aac',
     '-b:a',

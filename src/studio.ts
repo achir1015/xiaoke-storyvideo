@@ -8,7 +8,8 @@ import { estimateDepth } from './depth';
 import type { LocalLLM } from './local-llm';
 import { applyLocalShot, extractJson, LOCAL_SYSTEM, localShotPrompt, localShotSchema, parseStoryboard, ruleStoryboard, storyboardPrompt, varyShotTypes } from './storyboard';
 import { aiVideoSeconds, buildSrt, buildTimeline } from './timeline';
-import { type Character, type Line, type Project, type Settings, type Shot, normalizeProject } from './types';
+import { TaiwanTts, taiwanVoiceFor } from './indextts';
+import { type Character, type Line, type Project, type Settings, type Shot, type VoiceEngine, normalizeProject } from './types';
 import { ageBand, designKey, edgeVoiceFor, geminiVoiceFor, narratorAsSpeaker, voiceDesignPrompt } from './voices';
 
 export function hash(s: string) {
@@ -36,6 +37,8 @@ export class Studio {
   private saveTimer = 0;
   onChange: () => void = () => {};
   onSaved: () => void = () => {};
+  /** 台灣口音雲端語音排隊時通知畫面（鏡頭 id、前面還有幾位） */
+  onVoiceWait: (shotId: string, rank: number) => void = () => {};
   private absCache = new Map<string, string>();
 
   constructor(
@@ -93,7 +96,8 @@ export class Studio {
 
   async url(rel: string | undefined) {
     if (!rel) return '';
-    return mediaUrl(await this.abs(rel), this.p.updated);
+    const abs = await this.abs(rel);
+    return this.xk.media ? this.xk.media(abs, this.p.updated) : mediaUrl(abs, this.p.updated);
   }
 
   async readMedia(rel: string): Promise<Media> {
@@ -168,7 +172,7 @@ export class Studio {
       }
     }
     const photo = c.photos[0] ? await toWebp(await this.shrink(c.photos[0], 1024), 512, 512) : undefined;
-    const horde = new Horde(this.xk.net, this.settings.hordeKey, this.version);
+    const horde = new Horde(this.xk.net, this.settings.hordeKey, this.version, !this.xk.web);
     const seed = String(Math.floor(Math.random() * 1e9));
     let done = 0;
     onProgress?.(0, 9);
@@ -313,7 +317,7 @@ export class Studio {
       const cell = (await this.gridCells(cast[0].sheet))[shot.shotType === '特寫' ? 8 : 7];
       source = await toWebp(cell, size.width, size.height);
     }
-    const horde = new Horde(this.xk.net, this.settings.hordeKey, this.version);
+    const horde = new Horde(this.xk.net, this.settings.hordeKey, this.version, !this.xk.web);
     const r = await horde.generate(
       { prompt: hordePrompt(this.p, shot, cast, m.key === 'Z-Image-Turbo'), model: m.key, ...size, source, strength: source ? 0.62 : undefined },
       onStatus,
@@ -423,9 +427,12 @@ export class Studio {
     return Math.max(0, list.findIndex((x) => x.id === sp.id));
   }
 
-  engineFor(sp: Speaker): 'gemini-design' | 'gemini' | 'edge' {
-    const e = sp.voice.engine === 'auto' ? this.settings.voiceEngine : sp.voice.engine;
-    if (e !== 'edge' && !this.gemini.ready) return 'edge';
+  engineFor(sp: Speaker): VoiceEngine {
+    // 線上版沒有微軟語音：改用台灣口音雲端語音
+    const free: VoiceEngine = this.xk.web ? 'taiwan' : 'edge';
+    let e = sp.voice.engine === 'auto' ? this.settings.voiceEngine : sp.voice.engine;
+    if (e === 'edge' && this.xk.web) e = 'taiwan';
+    if ((e === 'gemini' || e === 'gemini-design') && !this.gemini.ready) return free;
     return e;
   }
 
@@ -484,8 +491,18 @@ export class Studio {
         rel = await this.writeMedia(`${base}.wav`, wav);
       } catch (e) {
         if ((e as AiError).kind === 'key' || sp.voice.engine !== 'auto') throw e;
-        engine = 'edge';
+        engine = this.xk.web ? 'taiwan' : 'edge';
       }
+    }
+    if (!rel && engine === 'taiwan') {
+      const r = await new TaiwanTts(this.settings.hfToken).synth({
+        text: line.text,
+        voiceId: taiwanVoiceFor(sp, this.voiceIndex(sp)),
+        emotion: line.emotion,
+        speed: ageBand(sp.age) === 'senior' ? 0.92 : 1,
+        onWait: (rank) => this.onVoiceWait(shot.id, rank),
+      });
+      rel = await this.writeMedia(`${base}.${r.ext}`, { mime: r.ext === 'mp3' ? 'audio/mpeg' : 'audio/wav', data: toBase64(r.bytes) });
     }
     if (!rel) {
       const v = edgeVoiceFor(sp, this.voiceIndex(sp));
@@ -517,7 +534,7 @@ export class Studio {
 
   async render(onProgress: (p: number, label: string) => void) {
     if (!this.p.shots.length) throw new Error('還沒有分鏡');
-    const inp: RenderInputs = { video: {}, still: {}, depth: {}, audio: {}, font: this.xk.platform === 'darwin' ? 'PingFang TC' : 'Microsoft JhengHei' };
+    const inp: RenderInputs = { video: {}, still: {}, depth: {}, audio: {}, font: this.xk.platform === 'darwin' ? 'PingFang TC' : this.xk.web ? 'Noto Sans TC Medium' : 'Microsoft JhengHei' };
     // 立體動態照片：沒有 AI 影片的鏡頭先算深度圖（失敗就用一般運鏡）
     if (this.settings.videoEngine === 'photo') {
       const need = this.p.shots.filter((s) => s.still && !this.depthOk(s));

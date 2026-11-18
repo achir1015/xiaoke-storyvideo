@@ -14,6 +14,8 @@
 - `electron/main.cjs`：xkstory://（網頁）、xkmedia://（專案檔案，Range）；net:request 只允許 generativelanguage.googleapis.com 與 aihorde.net（主程式 net.fetch 代送）；xkmedia 回應要帶 access-control-allow-origin（Electron 45 否則 canvas 讀圖會 tainted）；Gemini 金鑰用 safeStorage 加密存 userData；`XK_USER_DATA`、`XK_PROJECTS`、`XK_QUERY` 給測試用。
 - **免費優先**（使用者要求：慢可以，不要花大錢）：畫面預設 `src/horde.ts` AI Horde（匿名金鑰 0000000000、每秒最多 2 次請求、Z-Image 要 scheduler simple／9 步；圖片由 net:download 存成 .webp；近景特寫單一角色用九宮格格子 img2img）；動態預設 2.5D 立體動態照片（`src/depth-worker.ts` Depth Anything V2 small q8，**WASM CPU**；`render-plan.ts` parallaxFilter＝FFmpeg displace＋geq 依時間位移＋zoompan）；配音預設微軟語音。
 - `src/local-llm.ts`＋`llm-worker.ts`：本機小模型分鏡（WebLLM 0.2.87、Qwen3.5 2B/4B，WebGPU）＝**實驗功能預設關閉**：使用者的 Iris Xe 筆電跑久了整台當機重開三次（WHEA＋Kernel-Power 41）。WebLLM 每次請求的 JSON schema 必須相同（換 schema 會用到已刪除的 GrammarMatcher）；Electron 33 的 WebGPU 在 Iris Xe 會 device lost 且沒有 shader-f16 → 升級 Electron 45。
+- **線上版**：`src/web-bridge.ts` 實作同一個 DesktopBridge（boot 時沒有 window.xk 就建立，`xk.web=true`）：檔案存 IndexedDB（路徑 `/專案/<名稱>/<相對路徑>` → Blob）、媒體用 Blob 網址（bridge.media）、選檔用代號 `picked:N/檔名`、shell.open＝下載、設定存 localStorage；合成用 ffmpeg.wasm 0.12（單執行緒，vite 把 core 輸出到 dist/ffmpeg/，Electron 打包排除），每步把 `-i /專案/…` 的檔案放進虛擬硬碟、用完刪；燒字幕要 `fontsdir=/fonts` 和 Noto Sans TC（jsDelivr 固定版本 Sans2.004，存 IndexedDB 快取）。AI Horde 線上版用 r2:false（base64 回傳，避開跨網域）。部署 `.github/workflows/pages.yml`。
+- `src/indextts.ts` 台灣口音雲端語音：IndexTeam 官方 HF Space（IndexTTS-2.5，Gradio queue/join＋queue/data，fn_index 從 /config 找 gen_single），聲音樣本用 xiaoke-tts 公開的 `achir1015.github.io/xiaoke-tts/voices/<id>.mp3`（依性別年齡）；權杖放 `x-hf-authorization`；佇列串流要處理 unexpected_error／close_stream，不然會永遠等。線上版沒有微軟語音，engineFor 會把 edge 換成 taiwan。
 - `electron/edge-tts.cjs` 微軟免費神經語音（msedge-tts，必須在 dependencies）；`electron/ffmpeg.cjs` 合成。
 
 ## 指令（Node 22：`%LOCALAPPDATA%\nvm\v22.22.3\node.exe`，PATH 裡的是 20）
@@ -22,6 +24,7 @@ node node_modules/vitest/vitest.mjs run      # 19 項，含真的 FFmpeg 合成�
 node node_modules/typescript/bin/tsc
 node node_modules/vite/bin/vite.js build
 node e2e/desktop.mjs [--guide]              # 27 項（免費模式全流程）；XK_EXE= 測安裝版
+node --experimental-websocket e2e/web.mjs [--cloud]   # 線上版（先 build；無頭 Chrome；1 句真的台灣口音雲端語音；--cloud 多測 AI Horde）
 node e2e/horde-still.mjs [模型]             # AI Horde 真的產生 2 張畫面＋立體合成（會排隊）
 node e2e/local-board.mjs                    # 本機小模型分鏡（會讓顯示晶片滿載，使用者筆電會當機，非必要不要跑）
 CSC_IDENTITY_AUTO_DISCOVERY=false node node_modules/electron-builder/cli.js --win nsis portable --x64 --publish never "-c.directories.output=E:\xksv-build"

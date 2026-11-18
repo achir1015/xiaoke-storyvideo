@@ -11,9 +11,11 @@ export const ROLES: Role[] = ['主角', '配角', '童星', '其他'];
 export const GRID_VIEWS = ['正面', '左側面', '右側面', '四分之三側面', '背面（後方身景）', '遠景全身', '中景半身', '近景胸像', '面部特寫'] as const;
 export const MAX_CHARACTERS = 10;
 
+export type VoiceEngine = 'gemini-design' | 'gemini' | 'edge' | 'taiwan';
+
 export interface VoiceSetting {
-  /** gemini-design：依性別年齡設計專屬聲音；gemini：Gemini 內建聲音；edge：微軟免費神經語音 */
-  engine: 'auto' | 'gemini-design' | 'gemini' | 'edge';
+  /** gemini-design：依性別年齡設計專屬聲音；gemini：Gemini 內建聲音；edge：微軟免費神經語音；taiwan：台灣口音雲端語音（IndexTTS） */
+  engine: 'auto' | VoiceEngine;
   /** Gemini 內建聲音名稱或 Edge 聲音名稱（空白＝依性別年齡自動挑） */
   voice?: string;
   /** Gemini 聲音設計建立的 voice_… 代號 */
@@ -155,7 +157,9 @@ export interface Settings {
   /** 影片引擎：AI 影片或動態照片（免費，運鏡效果） */
   videoEngine: 'ai' | 'photo';
   /** 語音引擎預設 */
-  voiceEngine: 'gemini-design' | 'gemini' | 'edge';
+  voiceEngine: VoiceEngine;
+  /** Hugging Face 權杖（台灣口音雲端語音的免費 GPU 額度；空白＝匿名，只能用幾次） */
+  hfToken: string;
   /** 同時進行的 AI 工作數 */
   parallel: number;
   /** 分鏡方式：雲端 Gemini、本機小模型（免費）、快速切段 */
@@ -186,4 +190,5 @@ export const DEFAULT_SETTINGS: Settings = {
   stillEngine: 'horde',
   hordeModel: 'Juggernaut XL',
   hordeKey: '',
+  hfToken: '',
 };

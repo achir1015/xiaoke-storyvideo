@@ -92,7 +92,7 @@ const STEPS: Step[] = [
   {
     before: () => app().setStep('make'),
     target: () => $('#engines'),
-    text: '第四步產生畫面與配音，每一項都能選免費或付費。預設全部免費：畫面用「免費雲端 AI」，由全球志工電腦幫你畫寫實照片，要排隊幾分鐘，但不花錢、電腦也不會變慢；動態用「立體動態照片」，會依照遠近做出立體的鏡頭移動；配音用微軟語音。'
+    text: '第四步產生畫面與配音，每一項都能選免費或付費。預設全部免費：畫面用「免費雲端 AI」，由全球志工電腦幫你畫寫實照片，要排隊幾分鐘，但不花錢、電腦也不會變慢；動態用「立體動態照片」，會依照遠近做出立體的鏡頭移動；配音用免費的微軟語音或台灣口音雲端語音。'
   },
   {
     target: () => $('#make-all'),
@@ -105,7 +105,7 @@ const STEPS: Step[] = [
   },
   {
     target: () => $('#settings-btn'),
-    text: '這裡是設定。不設定也能完全免費使用：本機小模型分鏡、微軟語音，加上用九宮格照片做的動態影片。想要雲端 AI 的寫實畫面和影片，再到這裡貼上 Google Gemini 金鑰。',
+    text: '這裡是設定。不設定也能完全免費使用：免費雲端畫面、立體動態照片、免費配音。想要雲端 AI 的寫實畫面和影片，再到這裡貼上 Google Gemini 金鑰。',
   },
   {
     before: () => app().setStep('story'),
@@ -335,7 +335,8 @@ export function initUpdateButton(current: string) {
 }
 
 export async function checkUpdate(current: string, quiet = false) {
-  const xk = desktop();
+  const d = desktop();
+  const xk = d?.web ? undefined : d;
   try {
     let info: UpdateInfo;
     if (xk) info = await xk.update.check();

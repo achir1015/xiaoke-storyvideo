@@ -128,6 +128,8 @@ try {
 
   // 3 分鏡（沒有金鑰：規則式）
   await evaluate(`xkApp.setStep('board')`);
+  // 免費模式的快速切段（本機小模型另由 e2e/local-board.mjs 測試）
+  await evaluate(`xkApp.setBoardEngine('rule')`);
   await evaluate(`await xkApp.autoBoard()`);
   const shotsN = await evaluate(`return xkApp.project().shots.length`);
   check('自動分鏡', shotsN >= 5, `${shotsN} 個鏡頭`);

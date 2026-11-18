@@ -75,6 +75,9 @@ export interface Shot {
   stillKey?: string;
   video?: string;
   videoKey?: string;
+  /** 深度圖（2.5D 立體動態照片用；depthKey＝算深度時的畫面） */
+  depth?: string;
+  depthKey?: string;
   /** 使用者指定秒數（0＝依台詞長度自動） */
   seconds: number;
   error?: string;
@@ -155,6 +158,17 @@ export interface Settings {
   voiceEngine: 'gemini-design' | 'gemini' | 'edge';
   /** 同時進行的 AI 工作數 */
   parallel: number;
+  /** 分鏡方式：雲端 Gemini、本機小模型（免費）、快速切段 */
+  boardEngine: 'gemini' | 'local' | 'rule';
+  /** 本機小模型（見 local-llm.ts） */
+  localModel: string;
+  /** 畫面來源：免費雲端（AI Horde）、九宮格照片、Gemini（付費） */
+  stillEngine: 'horde' | 'sheet' | 'gemini';
+  /** AI Horde 模型與金鑰（空白＝匿名，免費） */
+  hordeModel: string;
+  hordeKey: string;
+  /** 啟用本機小模型分鏡（實驗功能：長時間讓顯示晶片滿載，部分筆電會不穩） */
+  localExperimental: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -163,7 +177,13 @@ export const DEFAULT_SETTINGS: Settings = {
   imageModel: 'gemini-nano-banana-2.1',
   videoModel: 'gemini-omni-1.2-flash',
   ttsModel: 'gemini-3.8-flash-tts',
-  videoEngine: 'ai',
-  voiceEngine: 'gemini-design',
+  videoEngine: 'photo',
+  voiceEngine: 'edge',
   parallel: 2,
+  boardEngine: 'gemini',
+  localModel: 'Qwen3.5-2B',
+  localExperimental: false,
+  stillEngine: 'horde',
+  hordeModel: 'Juggernaut XL',
+  hordeKey: '',
 };

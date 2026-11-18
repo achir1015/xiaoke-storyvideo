@@ -270,3 +270,118 @@ export function appearances(shots: Shot[], id: string) {
   return shots.filter((s) => s.characters.includes(id) || s.lines.some((l) => l.speaker === id)).length;
 }
 
+
+// --- 本機小模型分鏡 ---------------------------------------------------------------------
+// 小模型一次寫整份分鏡容易漏台詞、亂格式，所以先用規則把故事切成鏡頭（台詞忠於原文），
+// 再一個鏡頭一個鏡頭請小模型補上鏡頭類型、光線、色溫、焦段、運鏡、畫面描述、英文提示詞與語氣。
+
+const MOVES = ['固定', '緩慢推近', '拉遠', '橫搖', '跟拍'];
+const TIMES = ['清晨', '白天', '黃昏', '夜晚', '室內'];
+
+export const LOCAL_SYSTEM = '你是寫實電影的分鏡師。只輸出 JSON。畫面要像真實拍攝的電影，不要卡通或插畫。';
+
+/** 小模型用的 JSON 格式（WebLLM 會照這個格式限制輸出） */
+export function localShotSchema(_lines = 0) {
+  return {
+    type: 'object',
+    properties: {
+      scene: { type: 'string' },
+      shotType: { type: 'string', enum: SHOT_TYPES },
+      timeOfDay: { type: 'string', enum: TIMES },
+      light: { type: 'string' },
+      kelvin: { type: 'integer' },
+      lens: { type: 'integer' },
+      move: { type: 'string', enum: MOVES },
+      ambience: { type: 'string' },
+      visual: { type: 'string' },
+      prompt: { type: 'string' },
+      // 數量不寫進格式：每鏡都用同一份格式（WebLLM 換格式時會用到已刪除的格式檢查器而出錯）
+      emotions: { type: 'array', items: { type: 'string' }, maxItems: 8 },
+    },
+    required: ['scene', 'shotType', 'timeOfDay', 'light', 'kelvin', 'lens', 'move', 'ambience', 'visual', 'prompt', 'emotions'],
+  };
+}
+
+/** 第 i 個鏡頭給小模型的提示（附上前一鏡的場景與時段，讓前後連貫） */
+export function localShotPrompt(p: Project, shots: Shot[], i: number): string {
+  const s = shots[i];
+  const prev = shots[i - 1];
+  const name = (id: string) => (id === 'narrator' ? '旁白' : (p.characters.find((c) => c.id === id)?.name ?? '旁白'));
+  const cast = s.characters
+    .map((id) => p.characters.find((c) => c.id === id))
+    .filter((c): c is Character => !!c)
+    .map((c) => `${c.name}（${c.gender === 'male' ? '男' : '女'}，${c.age} 歲${c.look ? `，${c.look}` : ''}）`)
+    .join('；');
+  const lines = s.lines.map((l, k) => `${k + 1}. ${name(l.speaker)}：${l.text}`).join('\n');
+  const total = shots.length;
+  return `故事大意：${p.story.replace(/\s+/g, '').slice(0, 260)}
+
+現在是第 ${i + 1}／${total} 個鏡頭。${prev ? `上一個鏡頭：${prev.scene}，${prev.timeOfDay}，${prev.shotType}。` : '這是開場鏡頭，用遠景交代環境。'}
+畫面中的人物：${cast || '沒有人物（只有環境）'}
+這個鏡頭的台詞與旁白：
+${lines}
+
+請填寫：
+- scene：場景名稱（例如：漁港碼頭）
+- shotType：遠景（交代環境）、中景（對話、動作）、近景（表情）、特寫（情緒高點）
+- timeOfDay、light（光源方向與性質）、kelvin（色溫：日光 5600、陰天 6500、夕陽 3000、鎢絲燈 3200、晨光 4800）
+- lens（焦段 mm：遠景 24、中景 35、近景 50、特寫 85）
+- move：運鏡
+- ambience：環境音（例如：海浪、海鷗、風聲）
+- visual：中文畫面描述（人物位置、動作、表情、服裝），40 字以內
+- prompt：全英文的寫實攝影提示詞，不可出現中文字或人名（人物用外觀描述，例如 an elderly Taiwanese fisherman、a young girl with braids），寫場景、動作、光線、焦段、淺景深，60 個英文字以內，開頭用 photorealistic cinematic still
+- emotions：每一句的說話語氣，共 ${s.lines.length} 個（例如：平靜、溫柔、開心、急促、驚訝、慈祥）`;
+}
+
+/** 把小模型的回答套到鏡頭上；欄位不合理就保留規則分鏡的值 */
+export function applyLocalShot(shot: Shot, raw: unknown): Shot {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const str = (v: unknown, max = 400) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
+  const out: Shot = { ...shot, lines: shot.lines.map((l) => ({ ...l })) };
+  const st = str(r.shotType) as ShotType;
+  if (SHOT_TYPES.includes(st)) out.shotType = st;
+  if (str(r.scene, 30)) out.scene = str(r.scene, 30);
+  const tod = str(r.timeOfDay);
+  if (TIMES.includes(tod)) out.timeOfDay = tod;
+  if (str(r.light, 60)) out.light = str(r.light, 60);
+  const k = Number(r.kelvin);
+  if (k >= 1800 && k <= 10000) out.kelvin = Math.round(k / 100) * 100;
+  const lens = Number(r.lens);
+  out.lens = lens >= 12 && lens <= 200 ? Math.round(lens) : LENS[out.shotType];
+  const mv = str(r.move);
+  if (MOVES.includes(mv)) out.move = mv;
+  if (str(r.ambience, 40)) out.ambience = str(r.ambience, 40);
+  if (str(r.visual, 120)) out.visual = str(r.visual, 120);
+  // 英文提示詞：去掉小模型混進去的中文字，剩下的英文夠長才採用
+  const pr = englishOnly(str(r.prompt, 600));
+  if (pr.length >= 30 && !/cartoon|anime|illustration/i.test(pr)) out.prompt = pr;
+  // 語氣只給角色台詞；旁白維持平穩
+  const emos = Array.isArray(r.emotions) ? r.emotions : [];
+  out.lines.forEach((l, k2) => {
+    const e = str(emos[k2], 12);
+    if (e && !l.emotion && l.speaker !== 'narrator' && !/^(平靜|中性|無|旁白|一般)$/.test(e)) l.emotion = e;
+  });
+  return out;
+}
+
+/** 去掉中文字（小模型的英文提示詞偶爾夾中文），整理多餘的標點與空白 */
+export function englishOnly(t: string): string {
+  return t
+    .replace(/[　-〿㐀-鿿＀-￯]+/g, ' ')
+    .replace(/\s*,\s*(,\s*)+/g, ', ')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s,]+|[\s,]+$/g, '')
+    .trim();
+}
+
+/** 讓鏡頭類型有變化：不要連續三個一樣的 */
+export function varyShotTypes(shots: Shot[]): Shot[] {
+  const order: ShotType[] = ['中景', '近景', '遠景', '特寫'];
+  for (let i = 2; i < shots.length; i++) {
+    if (shots[i].shotType === shots[i - 1].shotType && shots[i].shotType === shots[i - 2].shotType) {
+      const nt = order.find((t) => t !== shots[i].shotType)!;
+      shots[i] = { ...shots[i], shotType: nt, lens: LENS[nt] };
+    }
+  }
+  return shots;
+}

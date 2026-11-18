@@ -1,6 +1,6 @@
 {
   "name": "xiaoke-storyvideo",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "小柯機器人文字與圖像轉影音工具：故事文案＋角色九宮格圖，由 AI 製作寫實分鏡影片、分齡分性別配音與 SRT 逐字稿",
   "scripts": {
     "test": "vitest run",
@@ -18,8 +18,10 @@
     "msedge-tts": "^2.0.0"
   },
   "devDependencies": {
+    "@huggingface/transformers": "4.3.2",
+    "@mlc-ai/web-llm": "0.2.87",
     "@types/node": "^22.10.0",
-    "electron": "^33.4.11",
+    "electron": "45.3.4",
     "electron-builder": "^25.1.8",
     "ffmpeg-static": "^5.2.0",
     "mammoth": "^1.8.0",

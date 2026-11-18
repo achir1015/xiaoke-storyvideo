@@ -4,6 +4,8 @@ import { desktop, type DesktopBridge } from './bridge';
 import { SAMPLE_CAST, SAMPLE_STORY, SAMPLE_TITLE } from './sample';
 import { appearances, estimateSec, guessAge, guessCharacters } from './storyboard';
 import { Studio, friendly } from './studio';
+import { LocalLLM, LOCAL_MODELS, gpuStatus, localModelOf } from './local-llm';
+import { HORDE_MODELS, hordeModelOf } from './horde';
 import { aiVideoSeconds, buildSrt, fmtDur, shotDuration } from './timeline';
 import {
   type Character,
@@ -71,6 +73,9 @@ let studio: Studio;
 let step = 'story';
 /** 正在處理中的項目（顯示「產生中」） */
 const busyKeys = new Set<string>();
+/** 免費雲端畫面排隊狀態（鏡頭 id → 文字）與取消 */
+const hordeWait = new Map<string, string>();
+const hordeCancel = { canceled: false };
 let making = false;
 let stopMaking = false;
 let rendering = false;
@@ -111,10 +116,10 @@ function renderSteps() {
   const ai = $('#ai-state');
   if (settings.geminiKey) {
     ai.className = 'ai-state ok';
-    ai.textContent = '✅ 已設定 Gemini 金鑰：寫實畫面、AI 影片與自然配音';
+    ai.textContent = '✅ 已設定 Gemini 金鑰：可用 AI 分鏡；付費的寫實畫面、AI 影片在第 4 步選';
   } else {
     ai.className = 'ai-state no';
-    ai.textContent = '🔑 尚未設定 AI 金鑰（按這裡設定）。目前用免費模式：自動分鏡、微軟語音、動態照片。';
+    ai.textContent = '🆓 全部免費模式：免費雲端畫面、立體動態照片、微軟語音。貼上 Google AI Studio 的免費金鑰，分鏡會更好（按這裡設定）。';
   }
 }
 
@@ -200,7 +205,7 @@ function charCard(c: Character): HTMLElement {
       <div class="sheet ${c.sheet ? 'has' : ''}" title="點一下選擇九宮格圖，或把圖片拖曳到這裡">
         ${c.sheet ? '' : '<span>＋ 九宮格圖<br/>點選或拖曳<br/>圖片到這裡</span>'}
         <div class="grid9">${GRID_VIEWS.map((v) => `<span>${esc(v.replace(/（.*）/, ''))}</span>`).join('')}</div>
-        ${busy ? '<div class="busy">AI 產生中…<br/>約 30 秒</div>' : ''}
+        ${busy ? `<div class="busy">AI 產生中…<br/><span class="sheet-wait">${settings.stillEngine === 'gemini' && settings.geminiKey ? '約 30 秒' : '免費雲端排隊中…'}</span></div>` : ''}
       </div>
       <div class="photos">${c.photos.map((ph, i) => `<img data-i="${i}" alt="照片" title="參考照片（點一下移除）" />`).join('')}</div>
     </div>
@@ -319,12 +324,19 @@ function charCard(c: Character): HTMLElement {
 }
 
 async function aiSheet(c: Character) {
-  if (!settings.geminiKey) return needKey('AI 產生九宮格需要 Gemini 金鑰。');
+  // 畫面選 Gemini（付費）且有金鑰才用 Gemini；否則用免費雲端（AI Horde）
+  const free = settings.stillEngine !== 'gemini' || !settings.geminiKey;
   if (!c.photos.length && !c.look.trim() && !c.sheet) return alertBox('需要參考資料', '<p>請先「加參考照片」（一到三張），或在外觀欄寫下髮型、服裝與特徵，AI 才知道要畫誰。</p>');
+  if (free && !(await confirmBox('用免費雲端 AI 產生九宮格？', '<p>由 AI Horde 志工電腦免費畫九個角度，再拼成九宮格。要排隊，大約 2–10 分鐘，期間可以繼續做其他步驟。</p><p class="muted">免費模型的長相一致性比付費的 Gemini 差一些；最好的方法是自己準備九宮格圖或加一張清楚的正面照當參考。</p>', '開始產生'))) return;
   busyKeys.add(`sheet:${c.id}`);
   renderCast();
   try {
-    await studio.genSheet(c);
+    if (free)
+      await studio.genSheetHorde(c, (done, total, st) => {
+        const el = document.querySelector(`.char[data-id="${c.id}"] .sheet-wait`);
+        if (el) el.textContent = `免費雲端：${done}/${total} 張${st && !st.processing && st.queue ? `・排隊第 ${st.queue} 位` : ''}`;
+      });
+    else await studio.genSheet(c);
     toast(`「${c.name}」的九宮格完成了`);
   } catch (e) {
     alertBox('九宮格產生失敗', `<p>${esc(friendly(e))}</p>`);
@@ -387,6 +399,7 @@ function kelvinColor(k: number) {
 
 function renderBoard() {
   const p = P();
+  renderBoardEngine();
   const box = $('#shots');
   $('#board-empty').hidden = p.shots.length > 0;
   boardStat();
@@ -521,26 +534,90 @@ function lineRow(l: Line, li: number) {
   return `<div class="line" data-i="${li}"><select>${speakerOptions(l.speaker)}</select><input class="t" type="text" value="${esc(l.text)}" placeholder="說的話" /><input class="emo" type="text" value="${esc(l.emotion)}" placeholder="語氣" /><button type="button" class="x" title="刪除這句">✕</button></div>`;
 }
 
+const llm = new LocalLLM();
+let boarding = false;
+
+function boardProgress(text: string, p: number | null) {
+  const el = $('#board-progress');
+  el.hidden = p === null;
+  el.querySelector<HTMLElement>('.txt')!.textContent = text;
+  el.querySelector<HTMLElement>('.bar i')!.style.width = `${Math.round(Math.max(0, Math.min(1, p ?? 0)) * 100)}%`;
+}
+
+/** 目前有效的分鏡方式（本機小模型沒開實驗功能時改用 Gemini） */
+const boardEngineNow = (): Settings['boardEngine'] => (settings.boardEngine === 'local' && !settings.localExperimental ? 'gemini' : settings.boardEngine);
+
+function renderBoardEngine() {
+  document.body.classList.toggle('local-exp', settings.localExperimental);
+  const eng = boardEngineNow();
+  $$('#board-engine button').forEach((b) => b.classList.toggle('on', b.dataset.v === eng));
+}
+
 async function autoBoard() {
   const p = P();
+  if (boarding) return;
   if (!p.story.trim()) return toast('請先在第 1 步輸入故事');
+  let engine = boardEngineNow();
+  if (engine === 'gemini' && !settings.geminiKey) {
+    toast('還沒設定 Gemini 金鑰，這次用「快速切段」。到「⚙ 設定」貼上 Google AI Studio 的免費金鑰，就能用 AI 分鏡。', 6500);
+    engine = 'rule';
+  }
+  if (engine === 'local') {
+    const g = await gpuStatus();
+    if (!g.ok) {
+      alertBox('無法使用本機小模型', `<p>${esc(g.reason ?? '')}</p><p>這次改用「快速切段」。</p>`);
+      engine = 'rule';
+    } else if (!(await llm.isCached(settings.localModel))) {
+      const m = localModelOf(settings.localModel);
+      const ok = await confirmBox(
+        '下載本機小模型',
+        `<p>第一次使用要下載「${esc(m.name)}」，約 <b>${m.size} GB</b>（只需下載一次，之後不用網路、也不用金鑰）。</p><p class="muted">${esc(m.note)}。可在「⚙ 設定」換模型或刪除。</p>`,
+        '開始下載',
+      );
+      if (!ok) return;
+    }
+  }
   if (p.shots.length && !(await confirmBox('重新分鏡？', '<p>會取代目前所有鏡頭（已產生的畫面與配音檔案會保留在資料夾裡，但不再使用）。</p>', '重新分鏡'))) return;
   const b = $<HTMLButtonElement>('#auto-board');
+  boarding = true;
   b.disabled = true;
-  b.textContent = settings.geminiKey ? '🎞️ AI 分鏡中…（約 20–60 秒）' : '🎞️ 分鏡中…';
+  b.textContent = engine === 'gemini' ? '🎞️ AI 分鏡中…（約 20–60 秒）' : engine === 'local' ? '🎞️ 本機模型分鏡中…' : '🎞️ 分鏡中…';
   try {
-    const r = await studio.storyboard(true);
+    if (engine === 'local') {
+      boardProgress('準備本機模型…', 0);
+      await llm.load(settings.localModel, (pr) => boardProgress(pr.text, pr.p));
+    }
+    const t0 = Date.now();
+    const r = await studio.storyboard(engine, {
+      llm,
+      onProgress: (done, total, shots) => {
+        const left = done ? ((Date.now() - t0) / done) * (total - done) : 0;
+        boardProgress(`本機模型分鏡 ${done}/${total}${done && left > 3000 ? `・約剩 ${Math.ceil(left / 1000)} 秒` : ''}`, total ? done / total : 0);
+        p.shots = shots.slice();
+        renderBoard();
+      },
+    });
     p.shots = r.shots;
     studio.touch();
     renderBoard();
     renderSteps();
-    if (r.note) alertBox('改用自動切段', `<p>${esc(r.note)}</p>`);
-    else toast(r.ai ? `AI 完成分鏡：${r.shots.length} 個鏡頭` : `已自動切成 ${r.shots.length} 個鏡頭（設定 Gemini 金鑰可得到更好的 AI 分鏡）`, 5000);
+    const sec = Math.round((Date.now() - t0) / 1000);
+    if (r.note && !r.ai) alertBox('改用自動切段', `<p>${esc(r.note)}</p>`);
+    else if (r.note) toast(`${r.note}（共 ${r.shots.length} 鏡）`, 6000);
+    else if (engine === 'local') toast(`本機模型完成分鏡：${r.shots.length} 個鏡頭（${sec} 秒）`, 5000);
+    else toast(r.ai ? `AI 完成分鏡：${r.shots.length} 個鏡頭` : `已自動切成 ${r.shots.length} 個鏡頭`, 5000);
   } catch (e) {
-    alertBox('分鏡失敗', `<p>${esc(friendly(e))}</p>`);
+    if ((e as Error).message === '已取消') {
+      toast('已停止分鏡');
+      studio.touch();
+    } else alertBox('分鏡失敗', `<p>${esc(friendly(e))}</p>`);
   } finally {
+    boarding = false;
+    boardProgress('', null);
     b.disabled = false;
-    b.textContent = '🎞️ AI 自動分鏡';
+    b.textContent = '🎞️ 自動分鏡';
+    // 釋放記憶體給後面的畫面與合成（再分鏡時從快取載入，只要幾秒）
+    if (engine === 'local') void llm.unload();
   }
 }
 
@@ -549,11 +626,33 @@ async function autoBoard() {
 function renderMake() {
   const p = P();
   $('#make-empty').hidden = p.shots.length > 0;
-  $$('#video-engine button').forEach((b) => b.classList.toggle('on', b.dataset.v === settings.videoEngine));
+  renderEngines();
   const box = $('#make-list');
   box.innerHTML = '';
   p.shots.forEach((s, i) => box.append(makeCard(s, i)));
   makeStat();
+}
+
+function renderEngines() {
+  $$('#still-engine button').forEach((b) => b.classList.toggle('on', b.dataset.v === settings.stillEngine));
+  $$('#video-engine button').forEach((b) => b.classList.toggle('on', b.dataset.v === settings.videoEngine));
+  const voice = settings.voiceEngine === 'edge' ? 'edge' : 'gemini-design';
+  $$('#voice-seg button').forEach((b) => b.classList.toggle('on', b.dataset.v === voice));
+}
+
+/** 切換第 4 步的做法；付費選項沒有金鑰時提醒 */
+function setEngine(kind: 'still' | 'video' | 'voice', v: string) {
+  if (v === 'gemini' || v === 'ai' || v === 'gemini-design') {
+    if (!settings.geminiKey) {
+      alertBox('需要 Gemini 金鑰', `<p>這個選項要用 Google Gemini${v === 'gemini-design' ? '（免費金鑰可試用，額度很少）' : '（需要已綁定付款的金鑰，會產生費用）'}。請先到「⚙ 設定」貼上金鑰。</p><p class="muted">不想花錢就用免費選項：☁️ 免費雲端 AI、🎞️ 立體動態照片、🔊 微軟語音。</p>`);
+      return;
+    }
+  }
+  if (kind === 'still') settings.stillEngine = v as Settings['stillEngine'];
+  if (kind === 'video') settings.videoEngine = v as Settings['videoEngine'];
+  if (kind === 'voice') settings.voiceEngine = v as Settings['voiceEngine'];
+  void saveSettings(settings);
+  renderMake();
 }
 
 function makeStat() {
@@ -584,7 +683,7 @@ function makeCard(s: Shot, i: number): HTMLElement {
   const cast = studio.castOf(s).map((c) => c.name).join('、');
   el.innerHTML = `
     <div class="media"><span>${s.still ? '' : '尚未產生畫面'}</span><span class="tag">${i + 1}・${s.shotType}・${shotDuration(s).toFixed(1)} 秒</span>
-      ${busy ? `<div class="busy">${busy.startsWith('video') ? 'AI 影片產生中…<br/>約 1–3 分鐘' : busy.startsWith('still') ? 'AI 畫面產生中…' : '配音產生中…'}</div>` : ''}</div>
+      ${busy ? `<div class="busy">${busy.startsWith('video') ? 'AI 影片產生中…<br/>約 1–3 分鐘' : busy.startsWith('still') ? `AI 畫面產生中…${hordeWait.get(s.id) ? `<br/><span class="shot-wait">${esc(hordeWait.get(s.id)!)}</span>` : ''}` : '配音產生中…'}</div>` : ''}</div>
     <div class="st">${label(st.stillOk, !!s.still, '畫面')}${settings.videoEngine === 'ai' ? label(st.videoOk, !!s.video, '影片') : ''}${label(st.voicesOk && s.lines.length > 0, s.lines.some((l) => l.audio), `配音 ${st.voices.filter(Boolean).length}/${s.lines.length}`)}</div>
     <div class="txt">${cast ? `<b>${esc(cast)}</b>：` : ''}${esc(s.visual || s.lines.map((l) => l.text).join(' '))}</div>
     ${s.error ? `<div class="err">${esc(s.error)}</div>` : ''}
@@ -675,7 +774,18 @@ async function runShot(s: Shot, o: RunOpts) {
     const wantVideo = !!o.video && settings.videoEngine === 'ai';
     if (o.still || (wantVideo && !s.still)) {
       if (o.force || !st.stillOk) {
-        if (useAi) await step('still', () => studio.genStill(s));
+        if (settings.stillEngine === 'horde') {
+          await step('still', () =>
+            studio.genStillHorde(
+              s,
+              (h) => {
+                hordeWait.set(s.id, h.processing ? '志工電腦正在畫…' : h.queue ? `排隊中：第 ${h.queue} 位・約 ${Math.max(1, Math.round(h.wait / 60))} 分鐘` : '排隊中…');
+                refreshShot(s);
+              },
+              hordeCancel,
+            ).finally(() => hordeWait.delete(s.id)),
+          );
+        } else if (settings.stillEngine === 'gemini' && useAi) await step('still', () => studio.genStill(s));
         else {
           const ok = await studio.stillFromSheet(s);
           if (!ok) s.error = '沒有 AI 金鑰時，需要角色九宮格圖才能做畫面（或按「自備圖」）。';
@@ -704,9 +814,10 @@ async function runShot(s: Shot, o: RunOpts) {
 async function makeAll(kind: 'all' | 'stills' | 'voices') {
   const p = P();
   if (!p.shots.length) return toast('請先完成分鏡');
-  if (!settings.geminiKey && kind !== 'voices' && !p.characters.some((c) => c.sheet))
-    return alertBox('需要角色圖或金鑰', '<p>沒有 Gemini 金鑰時，畫面會用角色九宮格裡的照片做「動態照片」。請先在第 2 步放入九宮格圖，或到「⚙ 設定」貼上金鑰。</p>');
+  if (settings.stillEngine === 'sheet' && kind !== 'voices' && !p.characters.some((c) => c.sheet))
+    return alertBox('需要角色九宮格', '<p>「九宮格照片」會用角色九宮格裡的照片當畫面。請先在第 2 步放入九宮格圖，或改選「☁️ 免費雲端 AI」。</p>');
   const wantVideo = kind === 'all' && settings.videoEngine === 'ai' && !!settings.geminiKey;
+  hordeCancel.canceled = false;
   const todo = p.shots.filter((s) => {
     const st = studio.shotState(s);
     if (kind === 'voices') return !st.voicesOk;
@@ -836,6 +947,14 @@ function openSettings() {
   $<HTMLInputElement>('#m-tts').value = settings.ttsModel;
   $<HTMLSelectElement>('#voice-engine').value = settings.voiceEngine;
   $<HTMLSelectElement>('#parallel').value = String(settings.parallel);
+  $<HTMLSelectElement>('#local-model').innerHTML = LOCAL_MODELS.map((m) => `<option value="${m.key}">${esc(m.name)}・${m.size} GB・${esc(m.note)}</option>`).join('');
+  $<HTMLSelectElement>('#local-model').value = localModelOf(settings.localModel).key;
+  $<HTMLInputElement>('#local-exp').checked = settings.localExperimental;
+  $<HTMLSelectElement>('#horde-model').innerHTML = HORDE_MODELS.map((m) => `<option value="${esc(m.key)}">${esc(m.name)}・${esc(m.note)}</option>`).join('');
+  $<HTMLSelectElement>('#horde-model').value = hordeModelOf(settings.hordeModel).key;
+  $<HTMLInputElement>('#horde-key').value = settings.hordeKey;
+  d.classList.toggle('show-local', settings.localExperimental);
+  void localStatus();
   $('#key-msg').textContent = '';
   d.showModal();
 }
@@ -850,6 +969,10 @@ function readSettingsForm(): Settings {
     ttsModel: $<HTMLInputElement>('#m-tts').value.trim() || DEFAULT_SETTINGS.ttsModel,
     voiceEngine: $<HTMLSelectElement>('#voice-engine').value as Settings['voiceEngine'],
     parallel: +$<HTMLSelectElement>('#parallel').value || 2,
+    localModel: $<HTMLSelectElement>('#local-model').value || settings.localModel,
+    localExperimental: $<HTMLInputElement>('#local-exp').checked,
+    hordeModel: $<HTMLSelectElement>('#horde-model').value || settings.hordeModel,
+    hordeKey: $<HTMLInputElement>('#horde-key').value.trim(),
   };
 }
 
@@ -858,6 +981,20 @@ async function saveSettings(s: Settings) {
   studio.setSettings(s);
   await xk.settings.set({ ...s, lastProject: lastProject });
   renderSteps();
+  renderBoardEngine();
+}
+
+async function localStatus() {
+  const msg = $('#local-msg');
+  const key = $<HTMLSelectElement>('#local-model').value;
+  const g = await gpuStatus();
+  if (!g.ok) {
+    msg.textContent = `⚠ ${g.reason}`;
+    return;
+  }
+  const cached = await llm.isCached(key);
+  msg.textContent = `${cached ? '✅ 已下載，可離線使用' : '尚未下載（第一次分鏡時下載）'}・顯示晶片：${g.adapter || 'WebGPU'}${g.f16 ? '' : '（不支援半精度，改用較大的 f32 版）'}`;
+  $<HTMLButtonElement>('#local-remove').disabled = !cached;
 }
 
 async function testKey() {
@@ -960,11 +1097,15 @@ export interface AppHook {
   makeAll(kind: 'all' | 'stills' | 'voices'): Promise<void>;
   render(): Promise<void>;
   setVideoEngine(v: 'ai' | 'photo'): void;
+  setStillEngine(v: Settings['stillEngine'], model?: string): void;
+  setBoardEngine(v: Settings['boardEngine'], model?: string): void;
   openSettings(): void;
   closeDialogs(): void;
   busy(): boolean;
   project(): ReturnType<typeof P>;
   studio(): Studio;
+  /** 測試用：本機小模型 */
+  llm(): LocalLLM;
   newProject(title: string): Promise<void>;
   openProject(dir: string): Promise<void>;
   save(): Promise<void>;
@@ -990,11 +1131,24 @@ window.xkApp = {
     void saveSettings(settings);
     renderMake();
   },
+  setStillEngine: (v, model) => {
+    settings.stillEngine = v;
+    if (model) settings.hordeModel = model;
+    void saveSettings(settings);
+    renderMake();
+  },
+  setBoardEngine: (v, model) => {
+    settings.boardEngine = v;
+    if (model) settings.localModel = model;
+    void saveSettings(settings);
+    renderBoardEngine();
+  },
   openSettings,
   closeDialogs: () => $$<HTMLDialogElement>('dialog[open]').forEach((d) => d.close()),
-  busy: () => making || rendering,
+  busy: () => making || rendering || boarding,
   project: () => P(),
   studio: () => studio,
+  llm: () => llm,
   newProject: newProjectNamed,
   openProject,
   save: () => studio.saveNow(),
@@ -1080,12 +1234,25 @@ async function boot() {
     renderBoard();
     $('#stage').scrollTop = 1e6;
   });
-  $$('#video-engine button').forEach((b) => b.addEventListener('click', () => window.xkApp.setVideoEngine(b.dataset.v as 'ai' | 'photo')));
+  $$('#video-engine button').forEach((b) => b.addEventListener('click', () => setEngine('video', b.dataset.v!)));
+  $$('#still-engine button').forEach((b) => b.addEventListener('click', () => setEngine('still', b.dataset.v!)));
+  $$('#voice-seg button').forEach((b) => b.addEventListener('click', () => setEngine('voice', b.dataset.v!)));
+  $$('#board-engine button').forEach((b) => b.addEventListener('click', () => window.xkApp.setBoardEngine(b.dataset.v as Settings['boardEngine'])));
+  $('#board-stop').addEventListener('click', () => llm.cancel());
+  $('#local-model').addEventListener('change', () => void localStatus());
+  $('#local-exp').addEventListener('change', (e) => $('#settings-dlg').classList.toggle('show-local', (e.target as HTMLInputElement).checked));
+  $('#local-remove').addEventListener('click', async () => {
+    const m = localModelOf($<HTMLSelectElement>('#local-model').value);
+    if (!(await confirmBox('刪除模型？', `<p>刪除已下載的「${esc(m.name)}」（約 ${m.size} GB）。之後用本機小模型分鏡時會再下載一次。</p>`, '刪除'))) return;
+    await llm.remove(m.key);
+    void localStatus();
+  });
   $('#make-all').addEventListener('click', () => void makeAll('all'));
   $('#make-stills').addEventListener('click', () => void makeAll('stills'));
   $('#make-voices').addEventListener('click', () => void makeAll('voices'));
   $('#make-stop').addEventListener('click', () => {
     stopMaking = true;
+    hordeCancel.canceled = true;
     toast('正在停止：進行中的鏡頭完成後就會停下');
   });
   $<HTMLInputElement>('#burn-subs').addEventListener('change', (e) => {

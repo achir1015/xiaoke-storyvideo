@@ -126,7 +126,13 @@
             <p>AI 依故事安排遠景、中景、近景、特寫，寫好光線、色溫、焦段與每句台詞。每一格都可以修改。</p>
           </div>
           <div class="toolbar">
-            <button type="button" id="auto-board" class="primary">🎞️ AI 自動分鏡</button>
+            <div class="seg" id="board-engine" title="分鏡方式">
+              <button type="button" data-v="gemini" title="用 Google Gemini 雲端分鏡：最細膩。Google AI Studio 的免費金鑰就能用">☁️ Gemini（免費金鑰）</button>
+              <button type="button" data-v="rule" title="依標點與段落快速切成鏡頭：最快、不用 AI、不用金鑰">⚡ 快速切段</button>
+              <button type="button" data-v="local" class="local-only" title="在這台電腦用小型 AI 模型分鏡（實驗功能）">💻 本機小模型（實驗）</button>
+            </div>
+            <button type="button" id="auto-board" class="primary">🎞️ 自動分鏡</button>
+            <span id="board-progress" class="board-progress" hidden><span class="bar"><i></i></span><span class="txt"></span><button type="button" id="board-stop" class="ghost small">停止</button></span>
             <button type="button" id="add-shot" class="ghost">＋ 新增鏡頭</button>
             <span id="board-stat" class="muted"></span>
             <div class="spacer"></div>
@@ -143,13 +149,33 @@
         <div class="page" data-page="make">
           <div class="page-head">
             <h2>④ 畫面與配音</h2>
-            <p>先產生每個鏡頭的寫實畫面，再讓 AI 演成影片；配音依角色的性別與年齡製作，遠景的聲音較小、有空間感，特寫貼近清楚。</p>
+            <p>每一項都可以選免費或付費的做法（預設全部免費）。配音依角色的性別與年齡製作，遠景的聲音較小、有空間感，特寫貼近清楚。</p>
+          </div>
+          <div class="engines" id="engines">
+            <div class="eng-row">
+              <span class="eng-label">畫面</span>
+              <div class="seg" id="still-engine" title="畫面來源">
+                <button type="button" data-v="horde" title="AI Horde：全球志工電腦免費產生寫實畫面，要排隊（每張約 1–8 分鐘），這台電腦不會滿載">☁️ 免費雲端 AI</button>
+                <button type="button" data-v="sheet" title="直接用角色九宮格裡的照片：最快、免費">🖼️ 九宮格照片</button>
+                <button type="button" data-v="gemini" title="Google Gemini 寫實畫面：最像參考角色，需要付費帳號的金鑰">💳 Gemini（付費）</button>
+              </div>
+            </div>
+            <div class="eng-row">
+              <span class="eng-label">動態</span>
+              <div class="seg" id="video-engine" title="畫面怎麼動">
+                <button type="button" data-v="photo" title="依畫面遠近做 2.5D 立體視差與運鏡：免費，用 CPU 計算">🎞️ 立體動態照片（免費）</button>
+                <button type="button" data-v="ai" title="Gemini AI 影片：人物真的會動，依秒數計費">💳 AI 影片（付費）</button>
+              </div>
+            </div>
+            <div class="eng-row">
+              <span class="eng-label">配音</span>
+              <div class="seg" id="voice-seg" title="配音方式">
+                <button type="button" data-v="edge" title="微軟神經語音：免費，依性別年齡選聲音">🔊 微軟語音（免費）</button>
+                <button type="button" data-v="gemini-design" title="Gemini 聲音設計：每個角色專屬聲音，需要金鑰">☁️ Gemini 語音</button>
+              </div>
+            </div>
           </div>
           <div class="toolbar">
-            <div class="seg" id="video-engine" title="影片引擎">
-              <button type="button" data-v="ai">🎥 AI 寫實影片</button>
-              <button type="button" data-v="photo">🖼️ 動態照片（省費用）</button>
-            </div>
             <button type="button" id="make-all" class="go">▶ 全部產生</button>
             <button type="button" id="make-stills" class="ghost">只產生畫面</button>
             <button type="button" id="make-voices" class="ghost">只產生配音</button>
@@ -203,7 +229,7 @@
     <dialog id="settings-dlg" class="xk-dialog wide">
       <form method="dialog">
         <h2>⚙ AI 設定</h2>
-        <p class="muted">寫實畫面、影片與配音使用 Google Gemini。到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 建立金鑰後貼在下面（金鑰只存在這台電腦，並以系統加密保存）。沒有金鑰也能用：分鏡改用自動切段、配音改用微軟免費語音、畫面用角色九宮格做動態照片。</p>
+        <p class="muted">AI 分鏡使用 Google Gemini：到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 用 Google 帳號建立<b>免費金鑰</b>（不用綁信用卡），貼在下面即可（金鑰只存在這台電腦，並以系統加密保存）。Gemini 的寫實畫面、AI 影片要付費帳號才能用；不想花錢就用免費選項：免費雲端畫面、立體動態照片、微軟語音。</p>
         <div class="field">
           <label for="key">Gemini API 金鑰</label>
           <div class="row">
@@ -231,6 +257,30 @@
           <div class="field">
             <label for="parallel">同時處理幾個鏡頭</label>
             <select id="parallel"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+          </div>
+        </div>
+        <h3 class="sub">☁️ 免費雲端畫面（AI Horde）</h3>
+        <p class="muted">由全球志工電腦免費產生寫實畫面，不用帳號、不花錢，這台電腦也不會滿載；缺點是要排隊（每張約 1–8 分鐘）。到 <a href="https://aihorde.net/register" target="_blank" rel="noopener">aihorde.net</a> 免費註冊拿到自己的金鑰，可以排得比較前面。</p>
+        <div class="two">
+          <div class="field">
+            <label for="horde-model">畫面模型</label>
+            <select id="horde-model"></select>
+          </div>
+          <div class="field">
+            <label for="horde-key">AI Horde 金鑰（可留空＝匿名）</label>
+            <input id="horde-key" type="password" autocomplete="off" spellcheck="false" placeholder="留空即可免費使用" />
+          </div>
+        </div>
+        <label class="check"><input type="checkbox" id="local-exp" /> 啟用「本機小模型分鏡」（實驗功能：在這台電腦用顯示晶片跑 AI，長時間滿載，<b>部分筆電會過熱或當機重開</b>，建議有獨立顯示卡的電腦再開）</label>
+        <div class="two local-only">
+          <div class="field">
+            <label for="local-model">本機小模型（分鏡用，免費）</label>
+            <select id="local-model"></select>
+            <span id="local-msg" class="muted"></span>
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <div class="row"><button type="button" id="local-remove" class="ghost small">刪除已下載的模型</button></div>
           </div>
         </div>
         <p class="muted small-note">費用提醒：AI 影片依秒數計費，產生前小柯會顯示總秒數讓你確認。選「動態照片」只產生畫面，費用低很多。</p>

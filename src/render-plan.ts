@@ -10,6 +10,8 @@ export interface RenderInputs {
   video: Record<string, { path: string; dur: number; hasAudio: boolean } | undefined>;
   /** 鏡頭 id → 靜態畫面絕對路徑 */
   still: Record<string, string | undefined>;
+  /** 鏡頭 id → 深度圖絕對路徑（有的話做 2.5D 立體動態照片） */
+  depth?: Record<string, string | undefined>;
   /** `${shotId}:${lineIndex}` → 語音檔絕對路徑 */
   audio: Record<string, string | undefined>;
   /** 合成時使用的字型（燒錄字幕） */
@@ -52,6 +54,38 @@ export function kenBurns(shot: Shot, w: number, h: number, dur: number): string 
   return `scale=${w * 2}:${h * 2}:force_original_aspect_ratio=increase,crop=${w * 2}:${h * 2},zoompan=z='${z}':x='${x}':y='${y}':d=1:s=${w}x${h}:fps=${FPS}`;
 }
 
+/**
+ * 2.5D 立體動態照片：依深度圖讓近的東西位移多、遠的少（視差），再加上推近、拉遠或橫搖。
+ * 全部用 FFmpeg 在 CPU 算（displace 濾鏡；位移圖由 geq 依時間產生）。
+ * 輸入 0＝畫面、1＝深度圖（都要 -loop 1）。
+ */
+export function parallaxFilter(shot: Shot, w: number, h: number, dur: number): string {
+  const n = Math.max(1, Math.round(dur * FPS));
+  const prog = `(on/${n})`;
+  // 近景物的最大位移（像素，依畫面寬度換算）
+  const base = { 遠景: 0.03, 中景: 0.028, 近景: 0.022, 特寫: 0.016 }[shot.shotType] ?? 0.025;
+  const still = /固定/.test(shot.move);
+  const amp = Math.round(w * base * (still ? 0.45 : 1));
+  // 位移隨時間從 -amp 到 +amp；/橫搖/ 往反方向，才像攝影機往旁邊移
+  const dir = /拉遠/.test(shot.move) ? -1 : 1;
+  const shift = `(lum(X,Y)/255)*${amp}*${dir}*(2*T/${f3(dur)}-1)`;
+  let z = `1.06+0.05*${prog}`;
+  let x = 'iw/2-(iw/zoom/2)';
+  if (/拉遠/.test(shot.move)) z = `1.11-0.05*${prog}`;
+  else if (/橫搖|跟拍/.test(shot.move)) {
+    z = '1.10';
+    x = `(iw-iw/zoom)*(0.15+0.7*${prog})`;
+  } else if (still) z = `1.06+0.015*${prog}`;
+  else if (shot.shotType === '特寫') z = `1.06+0.08*${prog}`;
+  const y = 'ih/2-(ih/zoom/2)';
+  return [
+    `[0:v]scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h},setsar=1,format=gbrp[img]`,
+    `[1:v]scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},format=gray,gblur=sigma=${Math.max(2, Math.round(w / 320))},geq=lum='128+${shift}',format=gbrp[xm]`,
+    `color=c=0x808080:s=${w}x${h}:r=${FPS},format=gbrp[ym]`,
+    `[img][xm][ym]displace=edge=smear,scale=${w * 2}:${h * 2},zoompan=z='${z}':x='${x}':y='${y}':d=1:s=${w}x${h}:fps=${FPS},setsar=1`,
+  ].join(';');
+}
+
 /** 一個鏡頭的畫面（無聲）：AI 影片優先，沒有就用靜態畫面運鏡 */
 export function shotVideoJob(p: Project, shot: Shot, i: number, dur: number, inp: RenderInputs): Job {
   const { w, h } = frameSize(p);
@@ -76,6 +110,15 @@ export function shotVideoJob(p: Project, shot: Shot, i: number, dur: number, inp
     return { label: `鏡頭 ${i + 1} 畫面`, dur, args: ['-y', '-i', v.path, '-vf', vf, '-an', '-t', f3(dur), ...X264, out] };
   }
   const still = inp.still[shot.id];
+  const depth = inp.depth?.[shot.id];
+  if (still && depth) {
+    const fc = `${parallaxFilter(shot, w, h, dur)},${fade},format=yuv420p[v]`;
+    return {
+      label: `鏡頭 ${i + 1} 立體畫面`,
+      dur,
+      args: ['-y', '-loop', '1', '-framerate', String(FPS), '-t', f3(dur), '-i', still, '-loop', '1', '-framerate', String(FPS), '-t', f3(dur), '-i', depth, '-filter_complex', fc, '-map', '[v]', '-frames:v', String(Math.round(dur * FPS)), ...X264, out],
+    };
+  }
   if (still) {
     const vf = `${kenBurns(shot, w, h, dur)},setsar=1,${fade},format=yuv420p`;
     return { label: `鏡頭 ${i + 1} 畫面`, dur, args: ['-y', '-loop', '1', '-framerate', String(FPS), '-t', f3(dur), '-i', still, '-vf', vf, '-frames:v', String(Math.round(dur * FPS)), ...X264, out] };

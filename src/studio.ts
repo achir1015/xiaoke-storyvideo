@@ -1,9 +1,12 @@
 // 製作流程：九宮格、分鏡、關鍵畫面、AI 影片、配音、合成（桌面版）
 import { AiError, Gemini, type Media } from './ai';
 import { type DesktopBridge, mediaUrl } from './bridge';
-import { gridPrompt, stillPrompt, videoPrompt } from './prompts';
+import { Horde, HORDE_NEGATIVE, hordeModelOf, hordeSize, type HordeStatus } from './horde';
+import { gridPrompt, hordePrompt, hordeSheetPrompt, stillPrompt, videoPrompt } from './prompts';
 import { buildPlan, type RenderInputs } from './render-plan';
-import { extractJson, parseStoryboard, ruleStoryboard, storyboardPrompt } from './storyboard';
+import { estimateDepth } from './depth';
+import type { LocalLLM } from './local-llm';
+import { applyLocalShot, extractJson, LOCAL_SYSTEM, localShotPrompt, localShotSchema, parseStoryboard, ruleStoryboard, storyboardPrompt, varyShotTypes } from './storyboard';
 import { aiVideoSeconds, buildSrt, buildTimeline } from './timeline';
 import { type Character, type Line, type Project, type Settings, type Shot, normalizeProject } from './types';
 import { ageBand, designKey, edgeVoiceFor, geminiVoiceFor, narratorAsSpeaker, voiceDesignPrompt } from './voices';
@@ -22,8 +25,12 @@ const extOf = (p: string) => (/\.([a-z0-9]+)$/i.exec(p)?.[1] ?? '').toLowerCase(
 
 type Speaker = ReturnType<typeof narratorAsSpeaker>;
 
+declare const __APP_VERSION__: string;
+
 export class Studio {
   p: Project;
+  /** 程式版本（AI Horde 要求標明用戶端） */
+  version = typeof __APP_VERSION__ === 'string' ? __APP_VERSION__ : '1.0.0';
   dir = '';
   gemini: Gemini;
   private saveTimer = 0;
@@ -103,6 +110,7 @@ export class Studio {
   async shrink(rel: string, max = 1536): Promise<Media> {
     const src = await this.url(rel);
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.src = src;
     await img.decode();
     const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
@@ -117,6 +125,7 @@ export class Studio {
   /** 九宮格切成九張（1 正面 … 9 面部特寫） */
   async gridCells(rel: string): Promise<Media[]> {
     const img = new Image();
+    img.crossOrigin = 'anonymous';
     img.src = await this.url(rel);
     await img.decode();
     const out: Media[] = [];
@@ -144,6 +153,68 @@ export class Studio {
 
   // --- 角色九宮格 ---------------------------------------------------------------------
 
+  /**
+   * 免費雲端（AI Horde）產生九宮格：九個角度各畫一張（同一個種子與描述，長相、服裝比較一致），
+   * 有參考照片時，近一點的角度用照片當參考（img2img）。最後拼成 3×3。
+   */
+  async genSheetHorde(c: Character, onProgress?: (done: number, total: number, status?: HordeStatus) => void, signal?: { canceled: boolean }) {
+    const m = hordeModelOf(this.settings.hordeModel);
+    let lookEn = '';
+    if (c.look.trim() && this.gemini.ready) {
+      try {
+        lookEn = (await this.gemini.text(`Translate this person's appearance into concise English photo keywords (hair, face, clothing, max 30 words). Output only the keywords.\n${c.look}`)).trim().slice(0, 300);
+      } catch {
+        // 用內建關鍵字
+      }
+    }
+    const photo = c.photos[0] ? await toWebp(await this.shrink(c.photos[0], 1024), 512, 512) : undefined;
+    const horde = new Horde(this.xk.net, this.settings.hordeKey, this.version);
+    const seed = String(Math.floor(Math.random() * 1e9));
+    let done = 0;
+    onProgress?.(0, 9);
+    const urls = await Promise.all(
+      Array.from({ length: 9 }, async (_, v) => {
+        // 一次送出太多會被限流：錯開送出時間
+        await new Promise((r) => setTimeout(r, v * 700));
+        const close = v === 3 || v >= 6;
+        const r = await horde.generate(
+          { prompt: hordeSheetPrompt(c, v, lookEn), model: m.key, width: 512, height: 512, seed, negative: v === 3 || v >= 6 ? `${HORDE_NEGATIVE}, full body, legs, feet, shoes, boots` : undefined, source: close ? photo : undefined, strength: close && photo ? 0.55 : undefined },
+          (st) => onProgress?.(done, 9, st),
+          signal,
+        );
+        done++;
+        onProgress?.(done, 9);
+        return r.url;
+      }),
+    );
+    // 下載九張再拼成 1536×1536
+    const tmp: string[] = [];
+    for (const [i, u] of urls.entries()) {
+      const rel = `角色/${c.id}-格${i + 1}.webp`;
+      await this.xk.net.download(u, {}, this.dir, rel);
+      this.absCache.delete(rel);
+      tmp.push(rel);
+    }
+    const cv = document.createElement('canvas');
+    cv.width = 1536;
+    cv.height = 1536;
+    const g = cv.getContext('2d')!;
+    for (const [i, rel] of tmp.entries()) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = await this.url(rel);
+      await img.decode();
+      g.drawImage(img, (i % 3) * 512, Math.floor(i / 3) * 512, 512, 512);
+    }
+    const data = cv.toDataURL('image/jpeg', 0.92).split(',')[1];
+    const rel = `角色/${c.id}-九宮格-${Date.now().toString(36)}.jpg`;
+    await this.writeMedia(rel, { mime: 'image/jpeg', data });
+    for (const t of tmp) await this.xk.proj.remove(this.dir, t).catch(() => {});
+    c.sheet = rel;
+    this.touch();
+    return rel;
+  }
+
   async genSheet(c: Character) {
     const refs: Media[] = [];
     for (const ph of c.photos.slice(0, 3)) refs.push(await this.shrink(ph));
@@ -158,24 +229,103 @@ export class Studio {
 
   // --- 分鏡 ----------------------------------------------------------------------------
 
-  async storyboard(useAi: boolean): Promise<{ shots: Shot[]; ai: boolean; note?: string }> {
-    if (useAi && this.gemini.ready) {
+  /**
+   * 分鏡：gemini＝雲端 AI 一次寫整份；local＝規則切段後由本機小模型逐鏡補細節；rule＝只用規則切段。
+   * 本機模型要先 load()（main.ts 負責下載提示與進度）。
+   */
+  async storyboard(
+    engine: 'gemini' | 'local' | 'rule',
+    opts: { llm?: LocalLLM; onProgress?: (done: number, total: number, shots: Shot[]) => void } = {},
+  ): Promise<{ shots: Shot[]; ai: boolean; note?: string }> {
+    const rule = () => ruleStoryboard(this.p.story, this.p.characters);
+    if (engine === 'gemini' && this.gemini.ready) {
       try {
         const text = await this.gemini.text(storyboardPrompt(this.p));
         return { shots: parseStoryboard(extractJson(text), this.p.characters), ai: true };
       } catch (e) {
         if ((e as AiError).kind === 'key') throw e;
-        return { shots: ruleStoryboard(this.p.story, this.p.characters), ai: false, note: `AI 分鏡失敗，改用自動切段：${(e as Error).message}` };
+        return { shots: rule(), ai: false, note: `AI 分鏡失敗，改用自動切段：${(e as Error).message}` };
       }
     }
-    return { shots: ruleStoryboard(this.p.story, this.p.characters), ai: false };
+    if (engine === 'local' && opts.llm?.ready) {
+      const shots = rule();
+      let fails = 0;
+      let lastErr = '';
+      opts.onProgress?.(0, shots.length, shots);
+      for (let i = 0; i < shots.length; i++) {
+        // 每鏡最多試兩次；顯示晶片斷線（device lost）時重新載入模型再試
+        for (let attempt = 0; attempt < 2; attempt++) {
+          try {
+            if (!opts.llm.ready) await opts.llm.reload();
+            const text = await opts.llm.chat(LOCAL_SYSTEM, localShotPrompt(this.p, shots, i), { schema: localShotSchema(shots[i].lines.length), maxTokens: 400 });
+            shots[i] = applyLocalShot(shots[i], extractJson(text));
+            break;
+          } catch (e) {
+            if ((e as Error).name === 'Canceled' || (e as Error).message === '已取消') throw e;
+            lastErr = (e as Error).message || String(e);
+            console.warn('本機分鏡失敗', i + 1, attempt + 1, lastErr);
+            if (attempt === 1) fails++;
+          }
+        }
+        opts.onProgress?.(i + 1, shots.length, shots);
+      }
+      if (fails === shots.length) return { shots, ai: false, note: `本機模型沒有回應，已改用自動切段。（${lastErr}）` };
+      return { shots: varyShotTypes(shots), ai: true, note: fails ? `有 ${fails} 個鏡頭本機模型沒寫好，保留自動切段的設定。（${lastErr}）` : undefined };
+    }
+    return { shots: rule(), ai: false };
   }
+
 
   // --- 關鍵畫面 -----------------------------------------------------------------------
 
   stillKey(shot: Shot) {
     const cast = this.castOf(shot);
+    if (this.settings.stillEngine === 'horde') {
+      const m = hordeModelOf(this.settings.hordeModel);
+      return `horde:${hash(m.key + hordePrompt(this.p, shot, cast.slice(0, 3), m.key === 'Z-Image-Turbo') + cast.map((c) => c.sheet).join('|') + this.p.aspect)}`;
+    }
     return hash(stillPrompt(this.p, shot, cast) + cast.map((c) => c.sheet).join('|'));
+  }
+
+  /**
+   * 免費雲端畫面（AI Horde）：志工電腦產生，要排隊（幾分鐘），這台電腦不會滿載。
+   * 近景、特寫只有一位角色時，用九宮格的臉部格當參考（img2img），長相比較接近。
+   */
+  async genStillHorde(shot: Shot, onStatus?: (s: HordeStatus) => void, signal?: { canceled: boolean }) {
+    let m = hordeModelOf(this.settings.hordeModel);
+    const cast = this.castOf(shot).slice(0, 3);
+    // 看不懂中文的模型需要英文畫面描述：有 Gemini 金鑰（免費額度）就翻譯，沒有就改用看得懂中文的 Z-Image
+    if (m.key !== 'Z-Image-Turbo' && !/[a-z]{4,}/i.test(shot.prompt ?? '')) {
+      if (this.gemini.ready) {
+        try {
+          const en = await this.gemini.text(
+            `Translate this film shot description into a concise English photo prompt (comma-separated keywords, max 40 words, no names, describe people by age and gender, Taiwan setting). Output only the prompt.\nScene: ${shot.scene}\nDescription: ${shot.visual}\nDialogue context: ${shot.lines.map((l) => l.text).join(' ')}`,
+          );
+          shot.prompt = en.replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 400);
+        } catch {
+          // 翻譯失敗：用內建中英關鍵字（hordePrompt 會自動加上）
+        }
+      }
+    }
+    const size = hordeSize(this.p.aspect, m.maxPixels);
+    let source: string | undefined;
+    if ((shot.shotType === '近景' || shot.shotType === '特寫') && cast.length === 1 && cast[0].sheet) {
+      const cell = (await this.gridCells(cast[0].sheet))[shot.shotType === '特寫' ? 8 : 7];
+      source = await toWebp(cell, size.width, size.height);
+    }
+    const horde = new Horde(this.xk.net, this.settings.hordeKey, this.version);
+    const r = await horde.generate(
+      { prompt: hordePrompt(this.p, shot, cast, m.key === 'Z-Image-Turbo'), model: m.key, ...size, source, strength: source ? 0.62 : undefined },
+      onStatus,
+      signal,
+    );
+    const rel = `鏡頭/${shot.id}-畫面.webp`;
+    await this.xk.net.download(r.url, {}, this.dir, rel);
+    this.absCache.delete(rel);
+    shot.still = rel;
+    shot.stillKey = this.stillKey(shot);
+    shot.error = undefined;
+    this.touch();
   }
 
   async genStill(shot: Shot) {
@@ -206,6 +356,27 @@ export class Studio {
   }
 
   // --- 影片 ----------------------------------------------------------------------------
+
+  /** 深度圖對應的畫面（畫面換了就要重算） */
+  depthKeyOf(shot: Shot) {
+    return `${shot.still ?? ''}|${shot.stillKey ?? ''}`;
+  }
+
+  depthOk(shot: Shot) {
+    return !!shot.depth && shot.depthKey === this.depthKeyOf(shot);
+  }
+
+  /** 算畫面的深度圖（2.5D 立體動態照片用，CPU 計算，不花錢） */
+  async genDepth(shot: Shot, progress?: (p: number) => void) {
+    if (!shot.still) throw new Error('這個鏡頭還沒有畫面');
+    const buf = await (await fetch(await this.url(shot.still))).arrayBuffer();
+    const png = await estimateDepth(buf, progress);
+    const rel = `鏡頭/${shot.id}-深度.png`;
+    await this.writeMedia(rel, { mime: 'image/png', data: toBase64(png) });
+    shot.depth = rel;
+    shot.depthKey = this.depthKeyOf(shot);
+    this.touch();
+  }
 
   videoKey(shot: Shot) {
     return hash(videoPrompt(this.p, shot, this.castOf(shot), aiVideoSeconds(shot)) + (shot.still ?? '') + (shot.stillKey ?? '') + this.p.aspect + this.p.resolution);
@@ -346,7 +517,19 @@ export class Studio {
 
   async render(onProgress: (p: number, label: string) => void) {
     if (!this.p.shots.length) throw new Error('還沒有分鏡');
-    const inp: RenderInputs = { video: {}, still: {}, audio: {}, font: this.xk.platform === 'darwin' ? 'PingFang TC' : 'Microsoft JhengHei' };
+    const inp: RenderInputs = { video: {}, still: {}, depth: {}, audio: {}, font: this.xk.platform === 'darwin' ? 'PingFang TC' : 'Microsoft JhengHei' };
+    // 立體動態照片：沒有 AI 影片的鏡頭先算深度圖（失敗就用一般運鏡）
+    if (this.settings.videoEngine === 'photo') {
+      const need = this.p.shots.filter((s) => s.still && !this.depthOk(s));
+      for (const [k, s] of need.entries()) {
+        onProgress(0, `計算立體深度 ${k + 1}/${need.length}`);
+        try {
+          await this.genDepth(s, (q) => onProgress(0, `下載立體深度模型 ${Math.round(q * 100)}%`));
+        } catch (e) {
+          console.warn('深度圖失敗', s.id, e);
+        }
+      }
+    }
     for (const s of this.p.shots) {
       if (s.video && (await this.xk.proj.exists(this.dir, s.video))) {
         const a = await this.abs(s.video);
@@ -354,6 +537,7 @@ export class Studio {
         if (info.hasVideo) inp.video[s.id] = { path: a, dur: info.dur, hasAudio: info.hasAudio };
       }
       if (s.still && (await this.xk.proj.exists(this.dir, s.still))) inp.still[s.id] = await this.abs(s.still);
+      if (this.settings.videoEngine === 'photo' && this.depthOk(s) && (await this.xk.proj.exists(this.dir, s.depth!))) inp.depth![s.id] = await this.abs(s.depth!);
       for (const [i, l] of s.lines.entries()) if (l.audio && (await this.xk.proj.exists(this.dir, l.audio))) inp.audio[`${s.id}:${i}`] = await this.abs(l.audio);
     }
     const outName = 'final.mp4';
@@ -385,4 +569,27 @@ export class Studio {
 export function friendly(e: unknown) {
   if (e instanceof AiError) return e.message;
   return (e as Error)?.message ?? String(e);
+}
+
+/** ArrayBuffer → base64（分段處理，避免大檔案超出參數上限） */
+function toBase64(buf: ArrayBuffer): string {
+  const b = new Uint8Array(buf);
+  let out = '';
+  for (let i = 0; i < b.length; i += 0x8000) out += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(out);
+}
+
+/** 參考圖轉成指定大小的 webp（AI Horde 的 img2img 要 webp base64） */
+async function toWebp(m: Media, w: number, h: number): Promise<string> {
+  const img = new Image();
+  img.src = `data:${m.mime};base64,${m.data}`;
+  await img.decode();
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const k = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+  const dw = img.naturalWidth * k;
+  const dh = img.naturalHeight * k;
+  c.getContext('2d')!.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  return c.toDataURL('image/webp', 0.9).split(',')[1];
 }

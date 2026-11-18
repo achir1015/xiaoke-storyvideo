@@ -197,16 +197,17 @@ async function serveMedia(req) {
     end = Math.max(start, Math.min(end, st.size - 1));
     return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })), {
       status: 206,
-      headers: { 'content-type': type, 'content-length': String(end - start + 1), 'content-range': `bytes ${start}-${end}/${st.size}`, 'accept-ranges': 'bytes', 'cache-control': 'no-cache' },
+      headers: { 'content-type': type, 'content-length': String(end - start + 1), 'content-range': `bytes ${start}-${end}/${st.size}`, 'accept-ranges': 'bytes', 'cache-control': 'no-cache', 'access-control-allow-origin': '*' },
     });
   }
-  return new Response(Readable.toWeb(fs.createReadStream(file)), { headers: { 'content-type': type, 'content-length': String(st.size), 'accept-ranges': 'bytes', 'cache-control': 'no-cache' } });
+  return new Response(Readable.toWeb(fs.createReadStream(file)), { headers: { 'content-type': type, 'content-length': String(st.size), 'accept-ranges': 'bytes', 'cache-control': 'no-cache', 'access-control-allow-origin': '*' } });
 }
 
 /** AI 連線：用 Chromium 網路堆疊（支援系統 Proxy），可設定逾時 */
 const aborts = new Set();
 async function netRequest(url, init) {
-  if (!/^https:\/\/generativelanguage\.googleapis\.com\//.test(url)) throw new Error('不允許的網址');
+  // 只允許 Gemini 與 AI Horde（免費雲端畫面）
+  if (!/^https:\/\/(generativelanguage\.googleapis\.com|aihorde\.net)\//.test(url)) throw new Error('不允許的網址');
   const ctl = new AbortController();
   aborts.add(ctl);
   const timer = init.timeoutMs ? setTimeout(() => ctl.abort(), init.timeoutMs) : null;

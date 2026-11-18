@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { explainError, outputs } from '../src/ai';
-import { gridPrompt, looksRealistic, stillPrompt, videoPrompt } from '../src/prompts';
-import { buildPlan } from '../src/render-plan';
+import { gridPrompt, hordePrompt, hordeSheetPrompt, lookToEn, looksRealistic, stillPrompt, videoPrompt } from '../src/prompts';
+import { HORDE_MODELS, hordeSize } from '../src/horde';
+import { buildPlan, shotVideoJob } from '../src/render-plan';
 import { SAMPLE_CAST, SAMPLE_STORY } from '../src/sample';
-import { extractJson, guessCharacters, parseStoryboard, ruleStoryboard, splitLong, estimateSec, MAX_LINE_SEC } from '../src/storyboard';
+import { applyLocalShot, extractJson, guessCharacters, localShotPrompt, localShotSchema, parseStoryboard, ruleStoryboard, splitLong, estimateSec, varyShotTypes, MAX_LINE_SEC } from '../src/storyboard';
 import { aiVideoSeconds, buildSrt, buildTimeline, chunkText, fmtSrtTime, shotDuration } from '../src/timeline';
 import { type Character, newCharacter, newProject, newShot, normalizeProject } from '../src/types';
 import { ageBand, edgeVoiceFor, geminiVoiceFor, spaceFor, voiceDesignPrompt } from '../src/voices';
@@ -58,6 +59,89 @@ describe('分鏡', () => {
     expect(shots[0].kelvin).toBe(3200);
     expect(shots[0].characters).toEqual([cs[0].id, cs[1].id]); // 用名字對應 id，說話的人自動加入
     expect(shots[0].lines[1].speaker).toBe('narrator');
+  });
+});
+
+describe('本機小模型分鏡', () => {
+  const chars = cast();
+  const p = { ...newProject('t'), story: SAMPLE_STORY, characters: chars };
+  const shots = ruleStoryboard(SAMPLE_STORY, chars);
+  it('每鏡提示含台詞、人物與前一鏡；每鏡格式相同', () => {
+    const t = localShotPrompt(p, shots, 1);
+    expect(t).toContain('第 2／');
+    expect(t).toContain('上一個鏡頭');
+    expect(t).toContain(shots[1].lines[0].text);
+    // 每鏡同一份格式（WebLLM 換格式會出錯）
+    expect(JSON.stringify(localShotSchema(1))).toBe(JSON.stringify(localShotSchema(3)));
+  });
+  it('套用回答：合理的值採用、不合理的保留原值、台詞不變', () => {
+    const s0 = shots[2];
+    const out = applyLocalShot(s0, { shotType: '近景', scene: '碼頭', timeOfDay: '清晨', kelvin: 4800, lens: 50, move: '緩慢推近', visual: '老人拉網', prompt: 'photorealistic cinematic still of an old fisherman', emotions: ['開心', '溫柔', '急促'] });
+    expect(out.shotType).toBe('近景');
+    expect(out.kelvin).toBe(4800);
+    expect(out.lines.map((l) => l.text)).toEqual(s0.lines.map((l) => l.text));
+    const bad = applyLocalShot(s0, { shotType: '大特寫', kelvin: 99999, lens: 3, prompt: '中文提示', move: '亂動' });
+    expect(bad.shotType).toBe(s0.shotType);
+    expect(bad.kelvin).toBe(s0.kelvin);
+    expect(bad.move).toBe(s0.move);
+    expect(bad.prompt ?? '').toBe(s0.prompt ?? '');
+    expect(bad.lens).toBeGreaterThanOrEqual(12);
+    expect(applyLocalShot(s0, null).lines.length).toBe(s0.lines.length);
+  });
+  it('不會連續三個相同鏡頭', () => {
+    const same = [0, 1, 2, 3].map(() => ({ ...newShot(), shotType: '中景' as const }));
+    const v = varyShotTypes(same);
+    for (let i = 2; i < v.length; i++) expect(v[i].shotType === v[i - 1].shotType && v[i].shotType === v[i - 2].shotType).toBe(false);
+  });
+});
+
+describe('免費雲端畫面（AI Horde）', () => {
+  it('尺寸是 64 的倍數、不超過像素上限、比例接近', () => {
+    for (const a of ['16:9', '9:16', '1:1']) {
+      const { width, height } = hordeSize(a, 512 * 512);
+      expect(width % 64).toBe(0);
+      expect(height % 64).toBe(0);
+      expect(width * height).toBeLessThanOrEqual(512 * 512);
+      const [x, y] = a.split(':').map(Number);
+      expect(Math.abs(width / height - x / y)).toBeLessThan(0.15);
+    }
+  });
+  it('提示詞：英文寫實關鍵字＋人物；Z-Image 另附中文畫面', () => {
+    const chars = cast();
+    const p = { ...newProject('t'), characters: chars };
+    const shot = { ...newShot(), shotType: '特寫' as const, timeOfDay: '清晨', visual: '小葵蹲在漁網旁', characters: [chars[1].id] };
+    const en = hordePrompt(p, shot, [chars[1]], false);
+    expect(en).toMatch(/photorealistic/);
+    expect(en).toMatch(/8-year-old Taiwanese little girl/);
+    expect(en).not.toMatch(/[\u4e00-\u9fff]/);
+    const zh = hordePrompt(p, shot, [chars[1]], true);
+    expect(zh).toContain('小葵蹲在漁網旁');
+    expect(HORDE_MODELS.every((m) => m.params.steps > 0)).toBe(true);
+  });
+});
+
+describe('外觀文字轉英文', () => {
+  it('顏色對應衣物、依距離只放看得到的部分', () => {
+    const look = '皮膚黝黑、滿臉皺紋與花白短髮，穿深藍色防水連身漁夫褲、灰色長袖棉衫、黑色雨鞋';
+    const full = lookToEn(look, 'full');
+    expect(full).toContain('navy blue waterproof fishing bib overalls');
+    expect(full).toContain('grey long-sleeve cotton shirt');
+    expect(full).toContain('black rain boots');
+    expect(full).toContain('tanned skin');
+    const chest = lookToEn(look, 'chest');
+    expect(chest).toContain('grey long-sleeve cotton shirt');
+    expect(chest).not.toContain('rain boots');
+    expect(chest).not.toContain('overalls');
+    const face = lookToEn(look, 'face');
+    expect(face).toContain('grey hair');
+    expect(face).not.toContain('shirt');
+    expect(lookToEn('綁兩條麻花辮的小女孩，穿黃色雨鞋、紅色防風外套、牛仔褲')).toContain('yellow rain boots');
+  });
+  it('九宮格特寫格不提鞋子', () => {
+    const c = { ...cast()[0] };
+    const p9 = hordeSheetPrompt(c, 8, '');
+    expect(p9).toMatch(/^\(close-up portrait of the face/);
+    expect(p9).not.toMatch(/boots/);
   });
 });
 
@@ -146,6 +230,29 @@ describe('Gemini 回應解析', () => {
 });
 
 describe('FFmpeg 合成（實際執行）', () => {
+  it('2.5D 立體動態照片：依深度圖做視差', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'xksv-px-'));
+    const run = (args: string[]) => {
+      const r = spawnSync(FF, ['-hide_banner', '-loglevel', 'error', ...args], { cwd: dir, encoding: 'utf8' });
+      if (r.status !== 0) throw new Error(r.stderr);
+      return r;
+    };
+    run(['-y', '-f', 'lavfi', '-i', 'testsrc2=s=800x450', '-frames:v', '1', join(dir, 'still.png')]);
+    run(['-y', '-f', 'lavfi', '-i', 'gradients=s=800x450:c0=black:c1=white:x0=0:y0=0:x1=0:y1=450:d=1', '-frames:v', '1', join(dir, 'depth.png')]);
+    const p = newProject('立體');
+    p.resolution = '720p';
+    for (const move of ['緩慢推近', '橫搖', '固定', '拉遠']) {
+      const shot = { ...newShot(), id: 'a', shotType: '中景' as const, move };
+      const job = shotVideoJob(p, shot, 0, 1.5, { video: {}, still: { a: join(dir, 'still.png') }, depth: { a: join(dir, 'depth.png') }, audio: {}, font: 'x' });
+      expect(job.label).toContain('立體');
+      run(job.args);
+      const info = spawnSync(FF, ['-hide_banner', '-i', join(dir, 'v_000.mp4')], { encoding: 'utf8' }).stderr;
+      expect(info).toMatch(/1280x720/);
+      expect(info).toMatch(/Duration: 00:00:01\.[45]/);
+    }
+  });
+
+
   it('畫面、配音、遠近效果、字幕軌合成成功', () => {
     const dir = mkdtempSync(join(tmpdir(), 'xksv-test-'));
     const run = (args: string[]) => {

@@ -10,8 +10,8 @@
 
 | 平台 | 狀態 |
 |---|---|
-| Windows 11 | ✅ v1.1.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)） |
-| MacBook Pro（Apple 晶片／Intel） | ✅ v1.1.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)；第一次開啟若被擋：按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」） |
+| Windows 11 | ✅ v1.2.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)） |
+| MacBook Pro（Apple 晶片／Intel） | ✅ v1.2.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)；第一次開啟若被擋：按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」） |
 | 線上版（HTML） | 規劃中 |
 | iPhone／iPad（線上安裝） | 規劃中 |
 | Android | 規劃中 |
@@ -25,16 +25,18 @@
 4. **畫面與配音**：AI 依九宮格拍出寫實畫面，再演成影片（含現場環境音）；配音依角色性別年齡設計專屬聲音，遠景較小聲有空間殘響、特寫貼近清楚。
 5. **合成影片・SRT**：一鍵合成 MP4（可燒錄字幕、內嵌字幕軌），同時存一份 SRT。
 
-## AI 服務
+## AI 服務（預設全部免費）
 
-| 功能 | 有 Gemini 金鑰 | 免費模式（沒有金鑰） |
+| 功能 | 免費（預設） | 付費（選用） |
 |---|---|---|
-| 分鏡 | Gemini 文字模型 | 依段落與對白自動切段 |
-| 九宮格、鏡頭畫面 | Gemini 圖片模型（Nano Banana） | 用九宮格裡最適合的那一格 |
-| 影片 | Gemini Omni 影片模型（3–15 秒/鏡，含環境音） | 動態照片（推、拉、搖運鏡） |
-| 配音 | Gemini 聲音設計（每角色專屬）／內建聲音 | 微軟神經語音（台灣腔，分男女老少） |
+| 分鏡 | Gemini 文字模型（[Google AI Studio](https://aistudio.google.com/apikey) 的**免費金鑰**即可）；沒有金鑰就依段落與對白快速切段 | — |
+| 鏡頭畫面 | **免費雲端 AI**（[AI Horde](https://aihorde.net)，全球志工電腦產生寫實照片，免帳號、要排隊，每張約 1–8 分鐘）；或直接用九宮格照片 | Gemini 圖片模型（Nano Banana） |
+| 動態 | **2.5D 立體動態照片**：AI 判斷畫面遠近（Depth Anything，CPU 計算），做出立體視差的推、拉、搖運鏡 | Gemini Omni AI 影片（3–15 秒/鏡，含環境音，依秒數計費） |
+| 配音 | **微軟神經語音**（台灣腔，分男女老少） | Gemini 聲音設計（每角色專屬） |
 
-金鑰到 [Google AI Studio](https://aistudio.google.com/apikey) 申請，貼在程式右上角「⚙ 設定」，只存在你的電腦（系統加密）。AI 影片依秒數計費，產生前會先顯示總秒數讓你確認。
+金鑰貼在程式右上角「⚙ 設定」，只存在你的電腦（系統加密）。付費的 AI 影片產生前會先顯示總秒數讓你確認。
+
+免費雲端畫面與立體動態照片都不會讓電腦的顯示晶片長時間滿載。設定裡另有「本機小模型分鏡」實驗功能（在自己電腦用顯示晶片跑 AI），預設關閉：部分筆電長時間滿載會過熱或當機重開。
 
 專案存在「文件\小柯文字圖像轉影音\專案名稱」，裡面有 角色／鏡頭／語音／輸出 資料夾與 project.json。
 

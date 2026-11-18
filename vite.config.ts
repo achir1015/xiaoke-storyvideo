@@ -7,6 +7,7 @@ export default defineConfig({
   // 相對路徑：本機、GitHub Pages、Electron 自訂協定、手機 App 都能用
   base: './',
   define: { __APP_VERSION__: JSON.stringify(version) },
+  worker: { format: 'es' },
   plugins: [
     {
       name: 'xk-version',

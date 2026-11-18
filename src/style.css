@@ -253,3 +253,22 @@ label.inline input { width: 70px; }
   .line { grid-template-columns: 90px 1fr 28px; }
   .line .emo { display: none; }
 }
+
+/* 本機模型分鏡進度 */
+.board-progress { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted, #6b6259); }
+.board-progress .bar { width: 140px; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.1); overflow: hidden; }
+.board-progress .bar i { display: block; height: 100%; width: 0; background: var(--go); transition: width 0.3s; }
+.board-progress .txt { white-space: nowrap; }
+
+/* 本機小模型（實驗功能）沒開時隱藏相關選項 */
+body:not(.local-exp) #board-engine .local-only { display: none; }
+#settings-dlg:not(.show-local) .local-only { display: none; }
+#settings-dlg label.check { font-weight: 400; align-items: flex-start; line-height: 1.5; }
+
+/* 第 4 步：畫面／動態／配音的做法 */
+.engines { display: flex; flex-wrap: wrap; gap: 10px 22px; margin: 0 0 14px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
+.eng-row { display: flex; align-items: center; gap: 10px; }
+.eng-label { font-weight: 700; color: var(--muted); min-width: 2.5em; }
+.shot-wait { font-size: 12px; color: var(--muted); }
+
+.xk-dialog h3.sub { margin: 16px 0 4px; font-size: 15px; }

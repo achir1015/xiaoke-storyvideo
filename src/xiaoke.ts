@@ -127,7 +127,39 @@ function pickVoice(): SpeechSynthesisVoice | undefined {
   return undefined;
 }
 
+interface AndroidTts {
+  ttsAvailable(): boolean;
+  ttsSpeak(text: string, rate: number, id: string): void;
+  ttsStop(): void;
+}
+const androidTts = () => (window as unknown as { XiaokeAndroid?: AndroidTts }).XiaokeAndroid;
+
+/** Android 的 WebView 沒有網頁語音：改用 App 提供的系統文字轉語音 */
+function speakAndroid(a: AndroidTts, text: string, mouth: HTMLElement): Promise<void> {
+  return new Promise((resolve) => {
+    const id = `t${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      cutSpeech = null;
+      mouth.classList.remove('talk');
+      resolve();
+    };
+    cutSpeech = () => {
+      a.ttsStop();
+      finish();
+    };
+    (window as unknown as { __xkTtsDone?: (x: string) => void }).__xkTtsDone = (x) => x === id && finish();
+    mouth.classList.add('talk');
+    setTimeout(finish, Math.max(4000, text.length * 300) + 2000);
+    a.ttsSpeak(text, 1.05, id);
+  });
+}
+
 function speak(text: string, mouth: HTMLElement): Promise<void> {
+  const a = androidTts();
+  if (a?.ttsAvailable() && !/[?&]mute/.test(location.search)) return speakAndroid(a, text, mouth);
   return new Promise((resolve) => {
     if (!('speechSynthesis' in window) || /[?&]mute/.test(location.search)) {
       mouth.classList.add('talk');
@@ -199,6 +231,7 @@ export async function startGuide() {
   let wake: (() => void) | null = null;
   const interrupt = () => {
     if ('speechSynthesis' in window) speechSynthesis.cancel();
+    androidTts()?.ttsStop();
     cutSpeech?.();
     wake?.();
   };
@@ -284,6 +317,7 @@ export async function startGuide() {
     }
   } finally {
     if ('speechSynthesis' in window) speechSynthesis.cancel();
+    androidTts()?.ttsStop();
     document.removeEventListener('keydown', onKey);
     layer.remove();
     running = false;
@@ -332,6 +366,14 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 const IOS_PAGES = 'https://achir1015.github.io/xiaoke-storyvideo/';
 
+interface AndroidUpdate {
+  checkUpdate(): string;
+  installUpdate(url: string, ver: string): string;
+  updateStatus(): string;
+  openUrl(url: string): boolean;
+}
+let apkUrl = '';
+
 export function initUpdateButton(current: string) {
   for (const b of document.querySelectorAll<HTMLButtonElement>('.xk-update')) b.addEventListener('click', () => void checkUpdate(current));
 }
@@ -341,10 +383,16 @@ export async function checkUpdate(current: string, quiet = false) {
   const xk = d?.web ? undefined : d;
   const w = window as unknown as { XiaokeIOS?: boolean; webkit?: { messageHandlers?: { xkq?: { postMessage(m: unknown): Promise<unknown> } } } };
   const iosBridge = w.XiaokeIOS ? w.webkit?.messageHandlers?.xkq : undefined;
+  const android = (window as unknown as { XiaokeAndroid?: AndroidUpdate }).XiaokeAndroid;
   try {
     let info: UpdateInfo;
     if (xk) info = await xk.update.check();
-    else if (iosBridge) {
+    else if (android) {
+      const j = JSON.parse(android.checkUpdate()) as { status: string; current: string; latest: string; url: string; page: string; notes: string; message?: string };
+      if (j.status !== 'ok') throw new Error(j.message ?? '查詢失敗');
+      info = { current: j.current, latest: j.latest, newer: cmpVer(j.latest, j.current) > 0, notes: j.notes, page: j.page, canInstall: !!j.url, flavor: 'android' };
+      apkUrl = j.url;
+    } else if (iosBridge) {
       // iPhone／iPad App：和線上版的版本比較，有新版就到安裝頁更新
       const res = await fetch(`${IOS_PAGES}version.json?t=${Date.now()}`, { cache: 'no-store' });
       const j = (await res.json()) as { version: string; notes?: string };
@@ -361,7 +409,7 @@ export async function checkUpdate(current: string, quiet = false) {
     const d = dialog(`<h2>有新版本 v${esc(info.latest)}</h2><p>目前版本 v${esc(info.current)}</p>
       ${info.notes ? `<pre class="xk-notes">${esc(info.notes)}</pre>` : ''}
       <progress hidden max="1" value="0"></progress><p class="xk-msg"></p>
-      <div class="xk-row"><button type="button" class="xk-go primary">${info.canInstall ? (xk ? '下載並安裝' : iosBridge ? '前往安裝頁更新' : '立即更新') : '開啟下載頁'}</button><button class="ghost">稍後</button></div>`);
+      <div class="xk-row"><button type="button" class="xk-go primary">${info.canInstall ? (xk || android ? '下載並安裝' : iosBridge ? '前往安裝頁更新' : '立即更新') : '開啟下載頁'}</button><button class="ghost">稍後</button></div>`);
     const go = d.querySelector<HTMLButtonElement>('.xk-go')!;
     const bar = d.querySelector<HTMLProgressElement>('progress')!;
     const msg = d.querySelector<HTMLElement>('.xk-msg')!;
@@ -369,6 +417,34 @@ export async function checkUpdate(current: string, quiet = false) {
       if (iosBridge) {
         await iosBridge.postMessage({ cmd: 'open_url', args: [info.page] });
         return;
+      }
+      if (android) {
+        if (!info.canInstall) {
+          android.openUrl(info.page);
+          return;
+        }
+        go.disabled = true;
+        bar.hidden = false;
+        android.installUpdate(apkUrl, info.latest);
+        for (;;) {
+          await new Promise((r) => setTimeout(r, 600));
+          const st = JSON.parse(android.updateStatus()) as { state: string; pct: number };
+          if (st.state === 'downloading') {
+            bar.value = st.pct / 100;
+            msg.textContent = `下載中 ${st.pct}%`;
+          } else if (st.state === 'permission') {
+            msg.textContent = '請在設定畫面允許「安裝不明應用程式」，回來後再按一次。';
+            go.disabled = false;
+            return;
+          } else if (st.state === 'launching') {
+            msg.textContent = '下載完成，請在安裝畫面按「更新」。';
+            return;
+          } else if (st.state === 'error') {
+            msg.textContent = '下載失敗，請稍後再試。';
+            go.disabled = false;
+            return;
+          }
+        }
       }
       if (!xk) {
         location.reload();

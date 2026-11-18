@@ -1183,8 +1183,8 @@ async function boot() {
     bridge = wb.createWebBridge();
     window.xk = bridge;
     // iPhone／iPad App：存檔走分享選單
-    if (wb.iosApp()) {
-      document.body.classList.add('ios-app');
+    if (wb.iosApp() || wb.androidApp()) {
+      document.body.classList.add(wb.iosApp() ? 'ios-app' : 'android-app');
       $$('#open-video .web-only, #open-srt .web-only').forEach((e) => (e.textContent = e.textContent!.replace('下載', '存')));
     }
   }
@@ -1347,4 +1347,20 @@ async function boot() {
 }
 
 $('#guide-btn').addEventListener('click', () => void startGuide());
+
+/** Android 返回鍵：先關對話框，再回上一步；已在第 1 步就交給 App（按兩次離開） */
+(window as unknown as { __xkBack?: () => boolean }).__xkBack = () => {
+  const d = document.querySelector<HTMLDialogElement>('dialog[open]');
+  if (d) {
+    d.close();
+    return true;
+  }
+  const order = ['story', 'cast', 'board', 'make', 'out'];
+  const i = order.indexOf(step);
+  if (i > 0) {
+    setStep(order[i - 1]);
+    return true;
+  }
+  return false;
+};
 void boot();

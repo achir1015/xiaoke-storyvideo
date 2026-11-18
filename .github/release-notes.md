@@ -6,12 +6,14 @@
 - Windows 11：`XiaokeStoryVideo-版本-win-x64.exe`（安裝版，會建立桌面與開始選單捷徑）／`…-portable.exe`（免安裝）
 - Mac（Apple 晶片）：`…-mac-arm64.dmg`；Mac（Intel）：`…-mac-x64.dmg`
 - 線上版（免安裝）：https://achir1015.github.io/xiaoke-storyvideo/
+- Android：`XiaokeStoryVideo-版本-android.apk`（第一次安裝要允許「安裝不明應用程式」）
 - iPhone／iPad：用 Safari 開 https://achir1015.github.io/xiaoke-storyvideo/ios/ 按「安裝」（`xiaoke-storyvideo-ios.ipa`）
 
 **v1.4.0：iPhone／iPad 版**
 - 新增 iPhone／iPad App（線上安裝）：和線上版同一套功能，專案存在 App 裡；做好的影片用分享選單存到「照片」「檔案」或 AirDrop。
 - 手機、平板版面：標題列與角色卡片自動換行，不再超出螢幕。
 - 產生素材、合成影片時不會自動鎖定螢幕。
+- 新增 Android App：影片存到「影片/小柯故事影音」、語音教學用手機語音、App 內一鍵更新、返回鍵回上一步。
 
 **v1.3.0：線上版**
 - 新增線上版：打開網址就能用，專案存在瀏覽器裡，影片在瀏覽器合成（較慢），做好按「⬇ 下載影片」。

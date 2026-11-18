@@ -115,12 +115,39 @@ async function shareIOS(ios: IOSBridge, blob: Blob, name: string) {
   await ios.postMessage({ cmd: 'end_save', args: [begin.token] });
 }
 
+// --- Android App（WebView）：window.XiaokeAndroid，回傳值都是 JSON 字串 -------------------
+
+interface AndroidBridge {
+  beginSave(name: string): string;
+  writeChunk(token: string, b64: string): string;
+  endSave(token: string): string;
+  keepAwake(on: boolean): void;
+}
+export const androidApp = (): AndroidBridge | undefined => (window as unknown as { XiaokeAndroid?: AndroidBridge }).XiaokeAndroid;
+
+/** Android App：影片存到「影片/小柯故事影音」，其他檔案存到「下載/小柯故事影音」 */
+async function saveAndroid(android: AndroidBridge, blob: Blob, name: string) {
+  const begin = JSON.parse(android.beginSave(name)) as { status: string; token?: string; message?: string; path?: string };
+  if (begin.status !== 'ok' || !begin.token) throw new Error(begin.message ?? '無法建立檔案');
+  const CHUNK = 512 * 1024;
+  for (let i = 0; i < blob.size; i += CHUNK) {
+    const r = JSON.parse(android.writeChunk(begin.token, await blobToB64(blob.slice(i, i + CHUNK)))) as { status: string; message?: string };
+    if (r.status !== 'ok') throw new Error(r.message ?? '寫入失敗');
+  }
+  android.endSave(begin.token);
+}
+
 /** 長時間工作時不要讓螢幕自動鎖定（鎖定後網頁會暫停） */
 let wakeLock: { release(): Promise<void> } | null = null;
 export async function keepAwake(on: boolean) {
   const ios = iosApp();
   if (ios) {
     await ios.postMessage({ cmd: 'keep_awake', args: [on] }).catch(() => null);
+    return;
+  }
+  const android = androidApp();
+  if (android) {
+    android.keepAwake(on);
     return;
   }
   try {
@@ -497,7 +524,9 @@ export function createWebBridge(): DesktopBridge {
         if (!b) return '找不到檔案';
         const name = p.split('/').pop() || 'download';
         const ios = iosApp();
+        const android = androidApp();
         if (ios) await shareIOS(ios, b.type ? b : new Blob([b], { type: mimeOf(p) }), name);
+        else if (android) await saveAndroid(android, b, name);
         else saveAs(b, name);
         return '';
       },

@@ -1,0 +1,112 @@
+{
+  "name": "xiaoke-storyvideo",
+  "version": "1.0.0",
+  "description": "小柯機器人文字與圖像轉影音工具：故事文案＋角色九宮格圖，由 AI 製作寫實分鏡影片、分齡分性別配音與 SRT 逐字稿",
+  "scripts": {
+    "test": "vitest run",
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc",
+    "app": "vite build && electron .",
+    "electron": "electron .",
+    "dist:win": "tsc && vite build && electron-builder --win nsis portable --x64 --publish never",
+    "dist:mac": "tsc && vite build && electron-builder --mac dmg --publish never",
+    "icon": "python scripts/make_icon.py"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "msedge-tts": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "ffmpeg-static": "^5.2.0",
+    "mammoth": "^1.8.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=20.19"
+  },
+  "type": "module",
+  "private": true,
+  "productName": "小柯機器人文字與圖像轉影音工具",
+  "main": "electron/main.cjs",
+  "author": {
+    "name": "吳玉柱",
+    "url": "https://github.com/achir1015"
+  },
+  "homepage": "https://github.com/achir1015/xiaoke-storyvideo",
+  "build": {
+    "appId": "com.achir.xiaokestoryvideo",
+    "productName": "小柯機器人文字與圖像轉影音工具",
+    "artifactName": "XiaokeStoryVideo-${version}-${os}-${arch}.${ext}",
+    "copyright": "Copyright © 2026 吳玉柱",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "build/icon.png",
+      "package.json",
+      "LICENSE"
+    ],
+    "extraResources": [
+      {
+        "from": "node_modules/ffmpeg-static",
+        "to": "bin",
+        "filter": [
+          "ffmpeg",
+          "ffmpeg.exe",
+          "LICENSE",
+          "*.LICENSE",
+          "*.README"
+        ]
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "THIRD_PARTY_NOTICES.md"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.ico",
+      "executableName": "XiaokeStoryVideo"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "小柯機器人文字與圖像轉影音工具",
+      "uninstallDisplayName": "小柯機器人文字與圖像轉影音工具",
+      "language": "1028",
+      "installerLanguages": [
+        "zh_TW"
+      ]
+    },
+    "portable": {
+      "artifactName": "XiaokeStoryVideo-${version}-win-x64-portable.${ext}"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "build/icon.png",
+      "category": "public.app-category.video",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "identity": null
+    },
+    "dmg": {
+      "title": "小柯機器人文字與圖像轉影音工具 ${version}"
+    },
+    "npmRebuild": false,
+    "afterSign": "build/adhoc-sign.cjs"
+  }
+}

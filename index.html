@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d3b4f" />
+    <meta name="description" content="小柯機器人文字與圖像轉影音工具：故事文案＋角色九宮格圖，AI 製作寫實分鏡影片、分齡配音與 SRT 逐字稿" />
+    <title>小柯機器人文字與圖像轉影音工具</title>
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  </head>
+  <body>
+    <header id="top">
+      <img class="logo" src="./logo.png" alt="" />
+      <div class="title">
+        <h1>小柯機器人文字與圖像轉影音工具</h1>
+        <p>故事文案＋角色圖 → 寫實鏡頭影片・真人感配音・SRT 逐字稿</p>
+      </div>
+      <div class="proj-chip" id="proj-chip" title="目前的專案">
+        <span class="ico">🎬</span>
+        <input id="proj-title" type="text" aria-label="專案名稱" />
+        <span id="save-state" class="muted"></span>
+      </div>
+      <button type="button" id="proj-btn" class="ghost pill" title="新專案／開啟專案">📂 專案</button>
+      <div class="spacer"></div>
+      <button type="button" id="guide-btn" class="ghost pill" title="語音動態教學"><span class="mini-robot"></span>語音教學</button>
+      <button type="button" id="settings-btn" class="ghost pill" title="AI 金鑰與模型設定">⚙ 設定</button>
+      <button type="button" class="ghost pill xk-update" title="檢查更新">⟳ 檢查更新</button>
+      <span id="ver" class="ver"></span>
+    </header>
+
+    <main id="layout">
+      <nav id="steps" aria-label="製作步驟">
+        <button type="button" data-step="story" class="on"><b>1</b><span>故事文案</span><i id="st-story"></i></button>
+        <button type="button" data-step="cast"><b>2</b><span>角色九宮格</span><i id="st-cast"></i></button>
+        <button type="button" data-step="board"><b>3</b><span>分鏡腳本</span><i id="st-board"></i></button>
+        <button type="button" data-step="make"><b>4</b><span>畫面與配音</span><i id="st-make"></i></button>
+        <button type="button" data-step="out"><b>5</b><span>合成影片・SRT</span><i id="st-out"></i></button>
+        <div class="steps-foot">
+          <div id="ai-state" class="ai-state"></div>
+          <p class="sign">開發：吳玉柱 先生<br />與 Claude AI Opus 5.5</p>
+        </div>
+      </nav>
+
+      <section id="stage">
+        <!-- 1 故事 -->
+        <div class="page on" data-page="story">
+          <div class="page-head">
+            <h2>① 故事文案</h2>
+            <p>貼上或開啟一篇故事（.txt、.docx、.md）。敘述會變成旁白，「」裡的話會變成角色台詞。</p>
+          </div>
+          <div class="story-grid">
+            <div class="card story-card">
+              <div class="row">
+                <button type="button" id="open-story" class="primary">📄 開啟文字檔</button>
+                <button type="button" id="sample-story" class="ghost">試用範例故事</button>
+                <div class="spacer"></div>
+                <span id="story-stat" class="muted"></span>
+              </div>
+              <textarea id="story" spellcheck="false" placeholder="在這裡貼上故事文案……&#10;&#10;例如：&#10;清晨的漁港飄著薄霧。阿海伯把漁網拖上岸，孫女小葵跑了過來。&#10;小葵說：「阿公，今天有抓到大魚嗎？」"></textarea>
+            </div>
+            <div class="card side-card">
+              <h3>影片設定</h3>
+              <div class="field" id="f-aspect">
+                <label>畫面比例</label>
+                <div class="seg" id="aspect">
+                  <button type="button" data-v="16:9">16:9 橫式</button>
+                  <button type="button" data-v="9:16">9:16 直式</button>
+                </div>
+              </div>
+              <div class="field">
+                <label for="resolution">解析度</label>
+                <select id="resolution">
+                  <option value="720p">720p（較快、較省）</option>
+                  <option value="1080p">1080p（較清晰）</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="style">時代與場景補充（可空白）</label>
+                <input id="style" type="text" placeholder="例如：1980 年代台灣鄉村、現代台北" />
+              </div>
+              <h3>旁白聲音</h3>
+              <div class="field" id="f-narrator">
+                <div class="row">
+                  <div class="seg small" id="nar-gender">
+                    <button type="button" data-v="female">女聲</button>
+                    <button type="button" data-v="male">男聲</button>
+                  </div>
+                  <label class="inline">年齡 <input id="nar-age" type="number" min="5" max="95" /></label>
+                </div>
+                <input id="nar-note" type="text" placeholder="聲音特色，例如：溫暖、沉穩的說故事口吻" />
+                <div class="row">
+                  <button type="button" id="nar-listen" class="ghost small">🔊 試聽旁白</button>
+                  <span id="nar-label" class="muted"></span>
+                </div>
+              </div>
+              <button type="button" class="go next-step" data-goto="cast">下一步：角色九宮格 →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2 角色 -->
+        <div class="page" data-page="cast">
+          <div class="page-head">
+            <h2>② 角色九宮格</h2>
+            <p>主角、配角、童星，每位一張九宮格視圖（至少 1 位，最多 10 位）：正面、左右側面、四分之三側、背面、遠景、中景、近景、面部特寫。沒有九宮格圖？加入一兩張照片或寫下外觀，按「AI 產生九宮格」。</p>
+          </div>
+          <div class="toolbar">
+            <button type="button" id="find-cast" class="ghost">🔎 從故事找出角色</button>
+            <button type="button" id="add-char" class="primary">＋ 新增角色</button>
+            <span id="cast-count" class="muted"></span>
+            <div class="spacer"></div>
+            <button type="button" class="go next-step" data-goto="board">下一步：分鏡腳本 →</button>
+          </div>
+          <div id="cast" class="cast-grid"></div>
+          <div id="cast-empty" class="empty">
+            <div class="empty-robot"></div>
+            <p>還沒有角色。按「從故事找出角色」讓小柯幫你找，或按「＋ 新增角色」。</p>
+          </div>
+        </div>
+
+        <!-- 3 分鏡 -->
+        <div class="page" data-page="board">
+          <div class="page-head">
+            <h2>③ 分鏡腳本</h2>
+            <p>AI 依故事安排遠景、中景、近景、特寫，寫好光線、色溫、焦段與每句台詞。每一格都可以修改。</p>
+          </div>
+          <div class="toolbar">
+            <button type="button" id="auto-board" class="primary">🎞️ AI 自動分鏡</button>
+            <button type="button" id="add-shot" class="ghost">＋ 新增鏡頭</button>
+            <span id="board-stat" class="muted"></span>
+            <div class="spacer"></div>
+            <button type="button" class="go next-step" data-goto="make">下一步：畫面與配音 →</button>
+          </div>
+          <div id="shots" class="shot-list"></div>
+          <div id="board-empty" class="empty">
+            <div class="empty-robot"></div>
+            <p>還沒有分鏡。按「AI 自動分鏡」，小柯會把故事拆成一個個鏡頭。</p>
+          </div>
+        </div>
+
+        <!-- 4 製作 -->
+        <div class="page" data-page="make">
+          <div class="page-head">
+            <h2>④ 畫面與配音</h2>
+            <p>先產生每個鏡頭的寫實畫面，再讓 AI 演成影片；配音依角色的性別與年齡製作，遠景的聲音較小、有空間感，特寫貼近清楚。</p>
+          </div>
+          <div class="toolbar">
+            <div class="seg" id="video-engine" title="影片引擎">
+              <button type="button" data-v="ai">🎥 AI 寫實影片</button>
+              <button type="button" data-v="photo">🖼️ 動態照片（省費用）</button>
+            </div>
+            <button type="button" id="make-all" class="go">▶ 全部產生</button>
+            <button type="button" id="make-stills" class="ghost">只產生畫面</button>
+            <button type="button" id="make-voices" class="ghost">只產生配音</button>
+            <button type="button" id="make-stop" class="ghost danger" hidden>■ 停止</button>
+            <div class="spacer"></div>
+            <span id="make-stat" class="muted"></span>
+          </div>
+          <div id="make-progress" class="progress-line" hidden><div></div><span></span></div>
+          <div id="make-list" class="make-grid"></div>
+          <div id="make-empty" class="empty">
+            <div class="empty-robot"></div>
+            <p>先完成「③ 分鏡腳本」。</p>
+          </div>
+        </div>
+
+        <!-- 5 輸出 -->
+        <div class="page" data-page="out">
+          <div class="page-head">
+            <h2>⑤ 合成影片・SRT 逐字稿</h2>
+            <p>把所有鏡頭、配音、環境音合成一支 MP4，同時產生 SRT 逐字稿（也會內嵌在影片裡）。</p>
+          </div>
+          <div class="out-grid">
+            <div class="card">
+              <h3>輸出設定</h3>
+              <label class="check"><input type="checkbox" id="burn-subs" /> 字幕燒錄在畫面上</label>
+              <div class="field">
+                <label for="ambience">影片環境音音量 <span id="amb-val"></span></label>
+                <input type="range" id="ambience" min="0" max="100" step="5" />
+              </div>
+              <div id="out-check" class="out-check"></div>
+              <button type="button" id="render" class="go big">🎬 合成影片</button>
+              <button type="button" id="render-stop" class="ghost danger" hidden>■ 停止合成</button>
+              <div id="render-progress" class="progress-line" hidden><div></div><span></span></div>
+              <div class="row out-acts">
+                <button type="button" id="open-video" class="ghost" disabled>▶ 開啟影片</button>
+                <button type="button" id="open-srt" class="ghost" disabled>📝 開啟 SRT</button>
+                <button type="button" id="open-folder" class="ghost">📁 輸出資料夾</button>
+              </div>
+            </div>
+            <div class="card player-card">
+              <video id="player" controls playsinline></video>
+              <div id="player-empty" class="empty small"><div class="empty-robot"></div><p>合成完成的影片會在這裡播放。</p></div>
+              <h3>SRT 逐字稿預覽</h3>
+              <pre id="srt-preview" class="srt"></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="settings-dlg" class="xk-dialog wide">
+      <form method="dialog">
+        <h2>⚙ AI 設定</h2>
+        <p class="muted">寫實畫面、影片與配音使用 Google Gemini。到 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> 建立金鑰後貼在下面（金鑰只存在這台電腦，並以系統加密保存）。沒有金鑰也能用：分鏡改用自動切段、配音改用微軟免費語音、畫面用角色九宮格做動態照片。</p>
+        <div class="field">
+          <label for="key">Gemini API 金鑰</label>
+          <div class="row">
+            <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="AIza…" />
+            <button type="button" id="key-show" class="ghost small">顯示</button>
+            <button type="button" id="key-test" class="ghost small">測試</button>
+          </div>
+          <span id="key-msg" class="muted"></span>
+        </div>
+        <div class="two">
+          <div class="field"><label for="m-text">分鏡（文字）模型</label><input id="m-text" type="text" /></div>
+          <div class="field"><label for="m-image">畫面（圖片）模型</label><input id="m-image" type="text" /></div>
+          <div class="field"><label for="m-video">影片模型</label><input id="m-video" type="text" /></div>
+          <div class="field"><label for="m-tts">語音模型</label><input id="m-tts" type="text" /></div>
+        </div>
+        <div class="two">
+          <div class="field">
+            <label for="voice-engine">配音方式</label>
+            <select id="voice-engine">
+              <option value="gemini-design">Gemini 聲音設計（每個角色專屬聲音，最自然）</option>
+              <option value="gemini">Gemini 內建聲音（依性別年齡挑選）</option>
+              <option value="edge">微軟免費神經語音（不需金鑰）</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="parallel">同時處理幾個鏡頭</label>
+            <select id="parallel"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+          </div>
+        </div>
+        <p class="muted small-note">費用提醒：AI 影片依秒數計費，產生前小柯會顯示總秒數讓你確認。選「動態照片」只產生畫面，費用低很多。</p>
+        <div class="xk-row">
+          <button type="button" id="models-reset" class="ghost">還原預設模型</button>
+          <div class="spacer"></div>
+          <button value="cancel" class="ghost">取消</button>
+          <button type="button" id="settings-save" class="primary">儲存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="proj-dlg" class="xk-dialog wide">
+      <form method="dialog">
+        <h2>📂 專案</h2>
+        <div class="row">
+          <input id="new-title" type="text" placeholder="新專案名稱，例如：漁港的早晨" />
+          <button type="button" id="proj-new" class="primary">＋ 建立新專案</button>
+        </div>
+        <h3>最近的專案</h3>
+        <ul id="proj-list" class="proj-list"></ul>
+        <div class="xk-row">
+          <button type="button" id="proj-open-other" class="ghost">開啟其他位置的專案…</button>
+          <button type="button" id="proj-root" class="ghost">📁 專案資料夾</button>
+          <div class="spacer"></div>
+          <button value="cancel" class="ghost" id="proj-close">關閉</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

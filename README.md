@@ -3,6 +3,10 @@
 <img src="public/icon-192.png" width="96" align="right" alt="圖示" />
 <img width="1910" height="1031" alt="image" src="https://github.com/user-attachments/assets/021c39ab-8d0a-47e4-a60e-9ca36400d95c" />
 
+
+https://github.com/user-attachments/assets/f7d23d3f-21fb-4209-a80b-2aa75f40ce67
+
+
 一篇**故事文案**＋角色的**九宮格視圖**（1～10 位：主角、配角、童星）→ AI 依故事安排**遠景、中景、近景、特寫**，
 做出**接近真實拍攝**的鏡頭影片（光源、廣角、色溫依真實光線特性）、**依性別與年齡區分**的自然配音（遠近、大小依場景），
 最後合成 MP4，並產生 **SRT 逐字稿**。

@@ -10,8 +10,8 @@
 
 | 平台 | 狀態 |
 |---|---|
-| Windows 11 | ✅ v1.0.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)） |
-| MacBook Pro | 規劃中 |
+| Windows 11 | ✅ v1.1.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)） |
+| MacBook Pro（Apple 晶片／Intel） | ✅ v1.1.0（[Releases](https://github.com/achir1015/xiaoke-storyvideo/releases/latest)；第一次開啟若被擋：按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」） |
 | 線上版（HTML） | 規劃中 |
 | iPhone／iPad（線上安裝） | 規劃中 |
 | Android | 規劃中 |

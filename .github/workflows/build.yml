@@ -31,15 +31,15 @@ jobs:
             args: --win nsis portable --x64
             name: win-x64
             arch: x64
-          # Mac 版（下一階段開啟）：Apple 晶片與 Intel 分開建置，npm_config_arch 讓 ffmpeg-static 下載對應架構
-          # - os: macos-latest
-          #   args: --mac dmg --arm64
-          #   name: mac-arm64
-          #   arch: arm64
-          # - os: macos-latest
-          #   args: --mac dmg --x64
-          #   name: mac-x64
-          #   arch: x64
+          # Apple 晶片與 Intel Mac 分開建置；npm_config_arch 讓 ffmpeg-static 下載對應架構的 FFmpeg
+          - os: macos-latest
+            args: --mac dmg --arm64
+            name: mac-arm64
+            arch: arm64
+          - os: macos-latest
+            args: --mac dmg --x64
+            name: mac-x64
+            arch: x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

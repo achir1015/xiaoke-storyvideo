@@ -6,6 +6,8 @@
 - Windows 11：`XiaokeStoryVideo-版本-win-x64.exe`（安裝版，會建立桌面與開始選單捷徑）／`…-portable.exe`（免安裝）
 - Mac（Apple 晶片）：`…-mac-arm64.dmg`；Mac（Intel）：`…-mac-x64.dmg`
 
+**v1.1.0：新增 MacBook Pro 版**（Apple 晶片與 Intel 各一個 dmg）。Mac 版未經 Apple 公證，第一次開啟若被擋：在「應用程式」對它按右鍵 →「打開」，或到「系統設定 → 隱私權與安全性」按「強制打開」。
+
 **使用 AI 需要 Google Gemini 金鑰**（在程式「⚙ 設定」貼上）；沒有金鑰也能用免費模式（自動分鏡、微軟神經語音、動態照片）。
 
 開發：吳玉柱 先生 與 Claude AI Opus 5.5

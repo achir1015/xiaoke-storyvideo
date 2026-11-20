@@ -9,6 +9,10 @@
 - Android：`XiaokeStoryVideo-版本-android.apk`（第一次安裝要允許「安裝不明應用程式」）
 - iPhone／iPad：用 Safari 開 https://achir1015.github.io/xiaoke-storyvideo/ios/ 按「安裝」（`xiaoke-storyvideo-ios.ipa`）
 
+**v1.4.1：修正**
+- 修正 Windows／Mac 桌面版：專案放在 OneDrive 資料夾時合成影片失敗（EPERM, Permission denied … _合成暫存）。合成暫存檔改放系統暫存區。
+- 只有桌面版需要更新；線上版、iPhone、Android 仍是 v1.4.0，不用更新。
+
 **v1.4.0：iPhone／iPad 版**
 - 新增 iPhone／iPad App（線上安裝）：和線上版同一套功能，專案存在 App 裡；做好的影片用分享選單存到「照片」「檔案」或 AirDrop。
 - 手機、平板版面：標題列與角色卡片自動換行，不再超出螢幕。

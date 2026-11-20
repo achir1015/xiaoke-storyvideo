@@ -394,17 +394,27 @@ app.whenReady().then(() => {
     return ff.probe(file);
   });
   h('ff:render', async (dir, plan, outRel, e) => {
-    const work = projPath(dir, '輸出/_合成暫存');
-    fs.rmSync(work, { recursive: true, force: true });
-    await ff.render(work, plan, (p, label) => {
-      if (!e.sender.isDestroyed()) e.sender.send('ff:progress', { p, label });
-    });
-    const out = projPath(dir, outRel);
-    fs.copyFileSync(path.join(work, plan.outName), out);
-    const srtOut = out.replace(/\.mp4$/i, '.srt');
-    fs.writeFileSync(srtOut, '﻿' + plan.srt);
-    fs.rmSync(work, { recursive: true, force: true });
-    return { video: out, srt: srtOut, size: fs.statSync(out).size };
+    // 暫存放系統暫存區：專案若在 OneDrive，同步程式會鎖住暫存檔，刪除時出現 EPERM
+    const tidy = (d) => {
+      try {
+        fs.rmSync(d, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
+      } catch {}
+    };
+    tidy(projPath(dir, '輸出/_合成暫存')); // 舊版留下的暫存資料夾
+    const work = fs.mkdtempSync(path.join(app.getPath('temp'), 'xiaoke-storyvideo-'));
+    try {
+      await ff.render(work, plan, (p, label) => {
+        if (!e.sender.isDestroyed()) e.sender.send('ff:progress', { p, label });
+      });
+      const out = projPath(dir, outRel);
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      fs.copyFileSync(path.join(work, plan.outName), out);
+      const srtOut = out.replace(/\.mp4$/i, '.srt');
+      fs.writeFileSync(srtOut, '﻿' + plan.srt);
+      return { video: out, srt: srtOut, size: fs.statSync(out).size };
+    } finally {
+      tidy(work);
+    }
   });
   h('ff:cancel', () => ff.cancel());
 
